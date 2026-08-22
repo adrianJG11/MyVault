@@ -4,7 +4,7 @@ from io import BytesIO
 
 import pytest
 
-from revolut_investment_importer import parse_revolut_investment_csv
+from investments.revolut_importer import parse_revolut_investment_csv
 
 HEADERS = "Date,Ticker,Type,Quantity,Price per share,Total Amount,Currency,FX Rate\n"
 

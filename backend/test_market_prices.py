@@ -4,8 +4,8 @@ from urllib.request import Request
 
 import pytest
 
-import market_prices
-from market_prices import MarketPriceError, fetch_twelve_data_prices
+from investments import market_prices
+from investments.market_prices import MarketPriceError, fetch_twelve_data_prices
 
 
 def test_fetch_twelve_data_prices_returns_valid_batch_prices(

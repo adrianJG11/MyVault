@@ -3,7 +3,7 @@ from decimal import Decimal
 
 import pytest
 
-from investment_calculations import calculate_investment_summary
+from investments.calculations import calculate_investment_summary
 from models import InvestmentActivity
 
 

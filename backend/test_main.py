@@ -8,10 +8,10 @@ from fastapi.testclient import TestClient
 from openpyxl import Workbook
 from sqlalchemy import delete
 
-import main
 from database import SessionFactory, engine
+from investments import router as investments_router
+from investments.market_prices import MarketPriceResult
 from main import app
-from market_prices import MarketPriceResult
 from models import Account, InvestmentActivity, InvestmentPrice, Transaction
 
 client = TestClient(app)
@@ -893,7 +893,7 @@ def test_refresh_investment_prices_updates_usd_positions(
         return MarketPriceResult(prices={"FAKE": Decimal(120)}, unavailable=[])
 
     monkeypatch.setenv("TWELVE_DATA_API_KEY", "fake-key")
-    monkeypatch.setattr(main, "fetch_twelve_data_prices", fake_fetch)
+    monkeypatch.setattr(investments_router, "fetch_twelve_data_prices", fake_fetch)
 
     response = client.post(f"/accounts/{account_id}/investment-prices/refresh")
 

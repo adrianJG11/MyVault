@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 from openpyxl import Workbook
 
-from ibercaja_importer import parse_ibercaja_xlsx
+from transactions.ibercaja_importer import parse_ibercaja_xlsx
 
 
 def test_parse_ibercaja_xlsx_returns_normalized_transaction(tmp_path: Path) -> None:
