@@ -1,0 +1,4 @@
+interface:
+  display_name: "Python + FastAPI Best Practices"
+  short_description: "Python y FastAPI modernos sin capas prematuras"
+  default_prompt: "Usa $python-fastapi-best-practices para orientar o revisar este código Python y FastAPI."

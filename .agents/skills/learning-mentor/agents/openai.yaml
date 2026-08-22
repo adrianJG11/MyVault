@@ -1,0 +1,4 @@
+interface:
+  display_name: "Learning Mentor"
+  short_description: "Aprende programando con guía y revisión"
+  default_prompt: "Usa $learning-mentor para guiarme paso a paso sin implementar por mí."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Financial App Security"
+  short_description: "Seguridad proporcionada para finanzas locales"
+  default_prompt: "Usa $financial-app-security para revisar los riesgos reales de esta funcionalidad local-first."

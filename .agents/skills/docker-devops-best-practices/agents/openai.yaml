@@ -1,0 +1,4 @@
+interface:
+  display_name: "Docker / DevOps Best Practices"
+  short_description: "Docker Compose sencillo, local y reproducible"
+  default_prompt: "Usa $docker-devops-best-practices para diseñar o revisar esta configuración de Docker y DevOps."

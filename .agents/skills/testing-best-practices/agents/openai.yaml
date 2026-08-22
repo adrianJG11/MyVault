@@ -1,0 +1,4 @@
+interface:
+  display_name: "Testing Best Practices"
+  short_description: "Tests claros y útiles con pytest"
+  default_prompt: "Usa $testing-best-practices para diseñar o revisar los tests de esta tarea."

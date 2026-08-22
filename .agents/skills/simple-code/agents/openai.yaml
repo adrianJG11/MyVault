@@ -1,0 +1,4 @@
+interface:
+  display_name: "Simple Code"
+  short_description: "Evita sobreingeniería aplicando YAGNI"
+  default_prompt: "Usa $simple-code para resolver esta tarea con la solución mínima y clara."
