@@ -37,6 +37,7 @@ class Transaction(Base):
     balance_after: Mapped[Decimal] = mapped_column(Numeric(14, 2))
     bank_concept: Mapped[str] = mapped_column(String(100))
     description: Mapped[str] = mapped_column(String(255))
+    category: Mapped[str | None] = mapped_column(String(125))
 
 
 class InvestmentActivity(Base):

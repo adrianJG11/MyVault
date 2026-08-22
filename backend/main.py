@@ -38,6 +38,11 @@ class TransactionRead(BaseModel):
     balance_after: Decimal
     bank_concept: str
     description: str
+    category: str | None
+
+
+class TransactionCategoryUpdate(BaseModel):
+    category: str = Field(min_length=1, max_length=125)
 
 
 class InvestmentActivityRead(BaseModel):
@@ -549,3 +554,26 @@ def import_revolut_investment_activities(
     session.commit()
 
     return ImportResult(imported=imported)
+
+
+@app.patch(
+    "/transactions/{transaction_id}/category",
+    response_model=TransactionRead,
+)
+def update_transactions_category(
+    transaction_id: int,
+    category_update: TransactionCategoryUpdate,
+    session: Annotated[Session, Depends(get_session)],
+) -> Transaction:
+    transaction = session.get(Transaction, transaction_id)
+
+    if transaction is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Transaction not found",
+        )
+    transaction.category = category_update.category
+    session.commit()
+    session.refresh(transaction)
+
+    return transaction

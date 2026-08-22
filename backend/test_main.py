@@ -194,6 +194,7 @@ def test_list_transactions_returns_stored_transaction(clean_database: None) -> N
         "balance_after": "14897.84",
         "bank_concept": "CARD",
         "description": "FAKE SUPERMARKET",
+        "category": None,
     }
 
 
