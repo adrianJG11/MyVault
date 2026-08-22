@@ -39,7 +39,7 @@ def _create_fake_ibercaja_xlsx() -> bytes:
         "17-08-2026",
         "17-08-2026",
         "CARD",
-        "FAKE SUPERMARKET",
+        "MERCADONA CÑ DIEGO",
         "FAKE123",
         -42.64,
         14897.84,
@@ -531,7 +531,8 @@ def test_import_ibercaja_xlsx_stores_transaction(clean_database: None) -> None:
     transactions = list_response.json()
     assert len(transactions) == 1
     assert transactions[0]["account_id"] == account_id
-    assert transactions[0]["description"] == "FAKE SUPERMARKET"
+    assert transactions[0]["description"] == "MERCADONA CÑ DIEGO"
+    assert transactions[0]["category"] == "food"
 
 
 def test_import_ibercaja_xlsx_skips_duplicate_transaction(

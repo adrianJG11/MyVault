@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from database import get_session
 from models import Account, Transaction
 from schemas import ImportResult
+from transactions.categorization import suggest_transaction_category
 from transactions.ibercaja_importer import parse_ibercaja_xlsx
 
 router = APIRouter(tags=["transactions"])
@@ -157,6 +158,9 @@ def import_ibercaja_transactions(
 
         transaction = Transaction(
             account_id=account_id,
+            category=suggest_transaction_category(
+                transaction_data["description"],
+            ),
             **transaction_data,
         )
         session.add(transaction)
