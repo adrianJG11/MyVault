@@ -15,6 +15,7 @@ type Transaction = {
   balance_after: string
   bank_concept: string
   description: string
+  category: string | null
 }
 
 type Account = {
@@ -189,6 +190,7 @@ function App() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('transactions')
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [categoryError, setCategoryError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [importMessage, setImportMessage] = useState<string | null>(null)
@@ -494,6 +496,40 @@ function App() {
     }
   }
 
+  async function handleCategoryChange(
+    transactionId: number,
+    category: string,
+  ) {
+    setCategoryError(null)
+
+    try {
+      const response = await fetch(
+        `/api/transactions/${transactionId}/category`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ category }),
+        },
+      )
+
+      if (!response.ok) {
+        throw new Error('Request failed')
+      }
+
+      const updatedTransaction = (await response.json()) as Transaction
+
+      setTransactions((currentTransactions) =>
+        currentTransactions.map((transaction) =>
+          transaction.id === updatedTransaction.id
+            ? updatedTransaction
+            : transaction,
+        ),
+      )
+    } catch {
+      setCategoryError('Could not update the transaction category.')
+    }
+  }
+
   async function handlePriceUpdate(
     event: FormEvent<HTMLFormElement>,
     ticker: string,
@@ -678,11 +714,14 @@ function App() {
           </div>
         )}
 
+        {categoryError && <p role="alert">{categoryError}</p>}
+
         <table>
           <thead>
             <tr>
               <th>Date</th>
               <th>Description</th>
+              <th>Category</th>
               <th>Amount</th>
             </tr>
           </thead>
@@ -692,6 +731,30 @@ function App() {
               <tr key={transaction.id}>
                 <td>{formatDate(transaction.operation_date)}</td>
                 <td>{transaction.description}</td>
+                <td>
+                  <select
+                    value={transaction.category ?? ''}
+                    onChange={(event) =>
+                      void handleCategoryChange(
+                        transaction.id,
+                        event.target.value,
+                      )
+                    }
+                  >
+                    <option value="" disabled>
+                      Uncategorized
+                    </option>
+                    <option value="housing">Housing</option>
+                    <option value="food">Food</option>
+                    <option value="transport">Transport</option>
+                    <option value="leisure">Leisure</option>
+                    <option value="utilities">Utilities</option>
+                    <option value="subscriptions">Subscriptions</option>
+                    <option value="income">Income</option>
+                    <option value="investment">Investment</option>
+                    <option value="other">Other</option>
+                  </select>
+                </td>
                 <td
                   className={
                     Number(transaction.amount) >= 0
