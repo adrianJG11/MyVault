@@ -41,3 +41,17 @@ def test_suggest_transaction_category_returns_investment_for_ibkr() -> None:
     category = suggest_transaction_category("TRANSFER TO IBKR")
 
     assert category == "investment"
+
+
+def test_suggest_transaction_category_returns_housing_for_rent_payment() -> None:
+    category = suggest_transaction_category("ALQUILER . BENEF: LUISA")
+
+    assert category == "housing"
+
+
+def test_suggest_transaction_category_returns_housing_for_rent_reimbursement() -> None:
+    category = suggest_transaction_category(
+        "BIZUM ABONO IBAI MOYA AROZ ALQUILER AGOSTO"
+    )
+
+    assert category == "housing"
