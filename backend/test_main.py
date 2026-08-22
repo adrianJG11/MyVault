@@ -942,3 +942,48 @@ def test_refresh_investment_prices_requires_api_key(
 
     assert response.status_code == 503
     assert response.json() == {"detail": "Market price API is not configured"}
+
+
+def test_update_transaction_category_persists_category(
+    clean_database: None,
+) -> None:
+    account_response = client.post(
+        "/accounts",
+        json={
+            "name": "Main account",
+            "bank_name": "Ibercaja",
+            "currency": "EUR",
+        },
+    )
+    assert account_response.status_code == 201
+    account_id = account_response.json()["id"]
+
+    with SessionFactory.begin() as session:
+        transaction = Transaction(
+            account_id=account_id,
+            import_fingerprint="c" * 64,
+            operation_date=date(2026, 8, 22),
+            value_date=date(2026, 8, 22),
+            amount=Decimal("-25.00"),
+            balance_after=Decimal("1000.00"),
+            bank_concept="CARD",
+            description="FAKE RESTAURANT",
+        )
+        session.add(transaction)
+        session.flush()
+        transaction_id = transaction.id
+
+    assert transaction_id is not None
+
+    response = client.patch(
+        f"/transactions/{transaction_id}/category",
+        json={"category": "food"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["category"] == "food"
+
+    list_response = client.get("/transactions")
+
+    assert list_response.status_code == 200
+    assert list_response.json()[0]["category"] == "food"
