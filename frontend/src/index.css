@@ -231,7 +231,8 @@ h1 {
   }
 }
 
-.monthly-chart {
+.monthly-chart,
+.category-chart {
   margin: 2rem 0;
   padding: 1rem;
   border: 1px solid #334155;
@@ -239,7 +240,8 @@ h1 {
   background: #111827;
 }
 
-.monthly-chart h2 {
+.monthly-chart h2,
+.category-chart h2 {
   margin-top: 0;
 }
 
@@ -277,6 +279,10 @@ h1 {
 
 .bar-out {
   background: #ef4444;
+}
+
+.bar-category {
+  background: #38bdf8;
 }
 
 section {

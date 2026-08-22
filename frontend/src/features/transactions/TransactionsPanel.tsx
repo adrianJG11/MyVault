@@ -20,6 +20,10 @@ function formatDate(value: string) {
   return `${day}/${month}/${year}`
 }
 
+function formatCategory(category: string) {
+  return category.charAt(0).toUpperCase() + category.slice(1)
+}
+
 type TransactionsPanelProps = {
   accountId: number
 }
@@ -58,6 +62,36 @@ export function TransactionsPanel({ accountId }: TransactionsPanelProps) {
     )
 
   const net = moneyIn - moneyOut
+
+  const spendingByCategory = new Map<string, number>()
+
+  for (const transaction of transactions) {
+    const amount = Number(transaction.amount)
+
+    if (
+      transaction.category === 'investment' ||
+      transaction.category === 'income' ||
+      (amount >= 0 && transaction.category === null)
+    ) {
+      continue
+    }
+
+    const category = transaction.category ?? 'uncategorized'
+    spendingByCategory.set(
+      category,
+      (spendingByCategory.get(category) ?? 0) - amount,
+    )
+  }
+
+  const categorySpending = [...spendingByCategory.entries()]
+    .map(([category, amount]) => ({ category, amount }))
+    .filter((category) => category.amount > 0)
+    .sort((first, second) => second.amount - first.amount)
+
+  const largestCategoryAmount = Math.max(
+    1,
+    ...categorySpending.map((category) => category.amount),
+  )
 
   const monthlyTotalsByMonth = new Map<
     string,
@@ -204,6 +238,29 @@ export function TransactionsPanel({ accountId }: TransactionsPanelProps) {
             </strong>
           </div>
         </div>
+
+        {categorySpending.length > 0 && (
+          <div className="category-chart">
+            <h2>Net spending by category</h2>
+
+            {categorySpending.map((category) => (
+              <div key={category.category}>
+                <div className="bar-label">
+                  <span>{formatCategory(category.category)}</span>
+                  <span>{euroFormatter.format(category.amount)}</span>
+                </div>
+                <div className="bar-track" aria-hidden="true">
+                  <div
+                    className="bar bar-category"
+                    style={{
+                      width: `${(category.amount / largestCategoryAmount) * 100}%`,
+                    }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
 
         {monthlyTotals.length > 0 && (
           <div className="monthly-chart">
