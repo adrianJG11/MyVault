@@ -988,3 +988,26 @@ def test_update_transaction_category_persists_category(
 
     assert list_response.status_code == 200
     assert list_response.json()[0]["category"] == "food"
+
+
+def test_update_transaction_category_returns_404_when_transaction_does_not_exist(
+    clean_database: None,
+) -> None:
+    response = client.patch(
+        "/transactions/999999999/category",
+        json={"category": "food"},
+    )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Transaction not found"}
+
+
+def test_update_transaction_category_rejects_empty_category(
+    clean_database: None,
+) -> None:
+    response = client.patch(
+        "/transactions/999999999/category",
+        json={"category": ""},
+    )
+
+    assert response.status_code == 422
