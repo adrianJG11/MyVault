@@ -43,6 +43,7 @@ def list_transactions(
     description: str | None = None,
     amount_min: Decimal | None = None,
     amount_max: Decimal | None = None,
+    category: str | None = None,
 ) -> list[Transaction]:
     if date_from is not None and date_to is not None and date_from > date_to:
         raise HTTPException(
@@ -75,6 +76,9 @@ def list_transactions(
 
     if amount_max is not None:
         statement = statement.where(Transaction.amount <= amount_max)
+
+    if category is not None:
+        statement = statement.where(Transaction.category == category)
 
     statement = statement.order_by(
         Transaction.operation_date.desc(),

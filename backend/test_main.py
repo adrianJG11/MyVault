@@ -427,6 +427,61 @@ def test_list_transactions_filters_by_description(clean_database: None) -> None:
     assert transactions[0]["description"] == "MERCADONA CÑ DIEGO"
 
 
+def test_list_transactions_filters_by_category(clean_database: None) -> None:
+    create_response = client.post(
+        "/accounts",
+        json={
+            "name": "Main account",
+            "bank_name": "Ibercaja",
+            "currency": "EUR",
+        },
+    )
+
+    assert create_response.status_code == 201
+
+    account_id = create_response.json()["id"]
+
+    with SessionFactory.begin() as session:
+        session.add_all(
+            [
+                Transaction(
+                    account_id=account_id,
+                    import_fingerprint=f"{90:064x}",
+                    operation_date=date(2026, 8, 17),
+                    value_date=date(2026, 8, 17),
+                    amount=Decimal("-686.11"),
+                    balance_after=Decimal("14776.84"),
+                    bank_concept="TRANSFER",
+                    description="RENT PAYMENT",
+                    category="housing",
+                ),
+                Transaction(
+                    account_id=account_id,
+                    import_fingerprint=f"{91:064x}",
+                    operation_date=date(2026, 8, 16),
+                    value_date=date(2026, 8, 16),
+                    amount=Decimal("-42.64"),
+                    balance_after=Decimal("15462.95"),
+                    bank_concept="CARD",
+                    description="SUPERMARKET PURCHASE",
+                    category="food",
+                ),
+            ]
+        )
+
+    response = client.get(
+        "/transactions",
+        params={"category": "housing"},
+    )
+
+    assert response.status_code == 200
+
+    transactions = response.json()
+    assert len(transactions) == 1
+    assert transactions[0]["description"] == "RENT PAYMENT"
+    assert transactions[0]["category"] == "housing"
+
+
 def test_list_transactions_filters_by_amount_range(clean_database: None) -> None:
     create_response = client.post(
         "/accounts",

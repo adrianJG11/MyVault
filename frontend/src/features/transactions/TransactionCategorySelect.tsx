@@ -1,14 +1,4 @@
-const categories = [
-  { value: 'housing', label: 'Housing' },
-  { value: 'food', label: 'Food' },
-  { value: 'transport', label: 'Transport' },
-  { value: 'leisure', label: 'Leisure' },
-  { value: 'utilities', label: 'Utilities' },
-  { value: 'subscriptions', label: 'Subscriptions' },
-  { value: 'income', label: 'Income' },
-  { value: 'investment', label: 'Investment' },
-  { value: 'other', label: 'Other' },
-]
+import { transactionCategories } from './categories'
 
 type TransactionCategorySelectProps = {
   transactionId: number
@@ -29,7 +19,7 @@ export function TransactionCategorySelect({
       <option value="" disabled>
         Uncategorized
       </option>
-      {categories.map((categoryOption) => (
+      {transactionCategories.map((categoryOption) => (
         <option key={categoryOption.value} value={categoryOption.value}>
           {categoryOption.label}
         </option>

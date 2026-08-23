@@ -1,4 +1,4 @@
-import { type FormEvent, useEffect, useState } from 'react'
+import { type SubmitEvent, useEffect, useState } from 'react'
 
 import { TransactionCategorySelect } from './TransactionCategorySelect'
 import {
@@ -7,6 +7,7 @@ import {
   updateTransactionCategory,
 } from './api'
 import type { Transaction } from './types'
+import { transactionCategories } from './categories'
 
 const TRANSACTIONS_PER_PAGE = 10
 
@@ -38,6 +39,7 @@ export function TransactionsPanel({ accountId }: TransactionsPanelProps) {
   const [isImporting, setIsImporting] = useState(false)
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
+  const [categoryFilter, setCategoryFilter] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
 
   const totalPages = Math.max(
@@ -127,7 +129,12 @@ export function TransactionsPanel({ accountId }: TransactionsPanelProps) {
   useEffect(() => {
     async function loadTransactions() {
       try {
-        const data = await fetchTransactions(accountId, dateFrom, dateTo)
+        const data = await fetchTransactions(
+          accountId,
+          dateFrom,
+          dateTo,
+          categoryFilter,
+        )
         setTransactions(data)
         setCurrentPage(1)
       } catch {
@@ -138,9 +145,9 @@ export function TransactionsPanel({ accountId }: TransactionsPanelProps) {
     }
 
     void loadTransactions()
-  }, [accountId, dateFrom, dateTo])
+  }, [accountId, dateFrom, dateTo, categoryFilter])
 
-  async function handleIbercajaImport(event: FormEvent<HTMLFormElement>) {
+  async function handleIbercajaImport(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault()
 
     if (selectedFile === null) {
@@ -158,6 +165,7 @@ export function TransactionsPanel({ accountId }: TransactionsPanelProps) {
         accountId,
         dateFrom,
         dateTo,
+        categoryFilter,
       )
 
       setTransactions(refreshedTransactions)
@@ -395,6 +403,26 @@ export function TransactionsPanel({ accountId }: TransactionsPanelProps) {
             }}
           />
         </label>
+
+        <label>
+    Category
+    <select
+      value={categoryFilter}
+      onChange={(event) => {
+        setIsLoading(true)
+        setError(null)
+        setCategoryFilter(event.target.value)
+      }}
+    >
+      <option value="">All categories</option>
+
+      {transactionCategories.map((category) => (
+        <option key={category.value} value={category.value}>
+          {category.label}
+        </option>
+      ))}
+    </select>
+  </label>
       </div>
 
       <form onSubmit={handleIbercajaImport}>
