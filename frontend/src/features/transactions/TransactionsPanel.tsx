@@ -187,18 +187,17 @@ export function TransactionsPanel({ accountId }: TransactionsPanelProps) {
     setCategoryError(null)
 
     try {
-      const updatedTransaction = await updateTransactionCategory(
-        transactionId,
-        category,
+      await updateTransactionCategory(transactionId, category)
+
+      const refreshedTransactions = await fetchTransactions(
+        accountId,
+        dateFrom,
+        dateTo,
+        categoryFilter,
       )
 
-      setTransactions((currentTransactions) =>
-        currentTransactions.map((transaction) =>
-          transaction.id === updatedTransaction.id
-            ? updatedTransaction
-            : transaction,
-        ),
-      )
+      setTransactions(refreshedTransactions)
+      setCurrentPage(1)
     } catch {
       setCategoryError('Could not update the transaction category.')
     }
