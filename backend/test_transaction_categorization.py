@@ -13,6 +13,18 @@ def test_suggest_transaction_category_returns_food_for_simply_market() -> None:
     assert category == "food"
 
 
+def test_suggest_transaction_category_returns_food_for_mialcampo() -> None:
+    category = suggest_transaction_category("MIALCAMPO GAMONAL")
+
+    assert category == "food"
+
+
+def test_suggest_transaction_category_returns_food_for_primaprix() -> None:
+    category = suggest_transaction_category("PRIMAPRIX BURGOS IV")
+
+    assert category == "food"
+
+
 def test_suggest_transaction_category_returns_none_for_unknown_description() -> None:
     category = suggest_transaction_category("UNKNOWN MERCHANT")
 
@@ -29,6 +41,36 @@ def test_suggest_transaction_category_returns_subscriptions_for_spotify() -> Non
     category = suggest_transaction_category("SPOTIFY")
 
     assert category == "subscriptions"
+
+
+def test_suggest_transaction_category_returns_subscriptions_for_overleaf() -> None:
+    category = suggest_transaction_category("OVERLEAF EDITOR")
+
+    assert category == "subscriptions"
+
+
+def test_suggest_transaction_category_returns_subscriptions_for_cloudflare() -> None:
+    category = suggest_transaction_category("CLOUDFLARE")
+
+    assert category == "subscriptions"
+
+
+def test_suggest_transaction_category_returns_leisure_for_odeon() -> None:
+    category = suggest_transaction_category("ODEON MULTICINES BU")
+
+    assert category == "leisure"
+
+
+def test_suggest_transaction_category_returns_shopping_for_pccomponentes() -> None:
+    category = suggest_transaction_category("PcComponentes")
+
+    assert category == "shopping"
+
+
+def test_suggest_transaction_category_returns_education_for_university() -> None:
+    category = suggest_transaction_category("UNIVERSIDAD DE BURG")
+
+    assert category == "education"
 
 
 def test_suggest_transaction_category_returns_investment_for_revolut() -> None:
