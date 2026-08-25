@@ -77,7 +77,9 @@ def list_transactions(
     if amount_max is not None:
         statement = statement.where(Transaction.amount <= amount_max)
 
-    if category is not None:
+    if category == "uncategorized":
+        statement = statement.where(Transaction.category.is_(None))
+    elif category is not None:
         statement = statement.where(Transaction.category == category)
 
     statement = statement.order_by(

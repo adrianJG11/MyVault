@@ -482,6 +482,61 @@ def test_list_transactions_filters_by_category(clean_database: None) -> None:
     assert transactions[0]["category"] == "housing"
 
 
+def test_list_transactions_filters_by_uncategorized(clean_database: None) -> None:
+    create_response = client.post(
+        "/accounts",
+        json={
+            "name": "Main account",
+            "bank_name": "Ibercaja",
+            "currency": "EUR",
+        },
+    )
+
+    assert create_response.status_code == 201
+
+    account_id = create_response.json()["id"]
+
+    with SessionFactory.begin() as session:
+        session.add_all(
+            [
+                Transaction(
+                    account_id=account_id,
+                    import_fingerprint=f"{92:064x}",
+                    operation_date=date(2026, 8, 17),
+                    value_date=date(2026, 8, 17),
+                    amount=Decimal("-15.00"),
+                    balance_after=Decimal("1000.00"),
+                    bank_concept="CARD",
+                    description="UNKNOWN PURCHASE",
+                    category=None,
+                ),
+                Transaction(
+                    account_id=account_id,
+                    import_fingerprint=f"{93:064x}",
+                    operation_date=date(2026, 8, 16),
+                    value_date=date(2026, 8, 16),
+                    amount=Decimal("-42.64"),
+                    balance_after=Decimal("1015.00"),
+                    bank_concept="CARD",
+                    description="SUPERMARKET PURCHASE",
+                    category="food",
+                ),
+            ]
+        )
+
+    response = client.get(
+        "/transactions",
+        params={"category": "uncategorized"},
+    )
+
+    assert response.status_code == 200
+
+    transactions = response.json()
+    assert len(transactions) == 1
+    assert transactions[0]["description"] == "UNKNOWN PURCHASE"
+    assert transactions[0]["category"] is None
+
+
 def test_list_transactions_filters_by_amount_range(clean_database: None) -> None:
     create_response = client.post(
         "/accounts",

@@ -414,6 +414,7 @@ export function TransactionsPanel({ accountId }: TransactionsPanelProps) {
       }}
     >
       <option value="">All categories</option>
+      <option value="uncategorized">Uncategorized</option>
 
       {transactionCategories.map((category) => (
         <option key={category.value} value={category.value}>
