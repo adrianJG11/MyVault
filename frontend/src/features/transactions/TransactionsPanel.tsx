@@ -40,6 +40,7 @@ export function TransactionsPanel({ accountId }: TransactionsPanelProps) {
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('')
+  const [descriptionFilter, setDescriptionFilter] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
 
   const totalPages = Math.max(
@@ -134,6 +135,7 @@ export function TransactionsPanel({ accountId }: TransactionsPanelProps) {
           dateFrom,
           dateTo,
           categoryFilter,
+          descriptionFilter,
         )
         setTransactions(data)
         setCurrentPage(1)
@@ -145,7 +147,7 @@ export function TransactionsPanel({ accountId }: TransactionsPanelProps) {
     }
 
     void loadTransactions()
-  }, [accountId, dateFrom, dateTo, categoryFilter])
+  }, [accountId, dateFrom, dateTo, categoryFilter, descriptionFilter])
 
   async function handleIbercajaImport(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -166,6 +168,7 @@ export function TransactionsPanel({ accountId }: TransactionsPanelProps) {
         dateFrom,
         dateTo,
         categoryFilter,
+        descriptionFilter,
       )
 
       setTransactions(refreshedTransactions)
@@ -194,6 +197,7 @@ export function TransactionsPanel({ accountId }: TransactionsPanelProps) {
         dateFrom,
         dateTo,
         categoryFilter,
+        descriptionFilter,
       )
 
       setTransactions(refreshedTransactions)
@@ -404,25 +408,39 @@ export function TransactionsPanel({ accountId }: TransactionsPanelProps) {
         </label>
 
         <label>
-    Category
-    <select
-      value={categoryFilter}
-      onChange={(event) => {
-        setIsLoading(true)
-        setError(null)
-        setCategoryFilter(event.target.value)
-      }}
-    >
-      <option value="">All categories</option>
-      <option value="uncategorized">Uncategorized</option>
+          Category
+          <select
+            value={categoryFilter}
+            onChange={(event) => {
+              setIsLoading(true)
+              setError(null)
+              setCategoryFilter(event.target.value)
+            }}
+          >
+            <option value="">All categories</option>
+            <option value="uncategorized">Uncategorized</option>
 
-      {transactionCategories.map((category) => (
-        <option key={category.value} value={category.value}>
-          {category.label}
-        </option>
-      ))}
-    </select>
-  </label>
+            {transactionCategories.map((category) => (
+              <option key={category.value} value={category.value}>
+                {category.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label>
+          Search
+          <input
+            type="search"
+            value={descriptionFilter}
+            placeholder="Transaction description"
+            onChange={(event) => {
+              setIsLoading(true)
+              setError(null)
+              setDescriptionFilter(event.target.value)
+            }}
+          />
+        </label>
       </div>
 
       <form onSubmit={handleIbercajaImport}>

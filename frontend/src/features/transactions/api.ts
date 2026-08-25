@@ -9,6 +9,7 @@ export async function fetchTransactions(
   dateFrom: string,
   dateTo: string,
   category: string,
+  description: string,
 ): Promise<Transaction[]> {
   const params = new URLSearchParams({
     account_id: String(accountId),
@@ -24,6 +25,10 @@ export async function fetchTransactions(
 
   if (category) {
     params.set('category', category)
+  }
+
+  if (description.trim()) {
+    params.set('description', description.trim())
   }
 
   const response = await fetch(`/api/transactions?${params}`)
