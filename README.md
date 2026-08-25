@@ -7,7 +7,7 @@ The application keeps financial data on my machine by default. The current goal
 is deliberately small: import real bank transactions, normalize them, store them
 in PostgreSQL, and inspect them through a small local web application.
 
-## Current version: V0.1
+## Current version: V0.2
 
 What works now:
 
@@ -15,9 +15,14 @@ What works now:
 - import an Ibercaja XLSX export into an account;
 - normalize and store transactions in PostgreSQL;
 - skip transactions that were already imported into the same account;
-- list transactions and filter them by account, date, description, or amount;
+- list transactions and filter them by account, date, description, amount, or
+  category, including uncategorized transactions;
+- assign categories manually and suggest categories from a small set of
+  explicit merchant rules during import;
 - select an account, import an Ibercaja XLSX file, and read its transactions in
   a React and TypeScript interface;
+- inspect money in, money out, monthly cash flow, and spending by category;
+- search, filter, categorize, and paginate transactions in the web interface;
 - import duplicate-safe Revolut investment activity from CSV and inspect it in
   a separate Investments tab;
 - calculate FIFO positions, realized results, dividends, and unrealized results
@@ -102,6 +107,11 @@ The Investments tab accepts Revolut's investment activity CSV export. Select a
 dedicated Revolut account before importing it. The first version preserves
 trades, dividends, cash movements, currencies, and FX rates as reported.
 
+Imported bank transactions receive a category only when an explicit rule
+matches confidently. Categories can be corrected manually from the transaction
+table. Existing records were backfilled once with the same rules without
+overwriting categories that had already been assigned manually.
+
 After importing, use **Refresh market prices** to retrieve supported USD prices
 from Twelve Data. Only ticker symbols are sent to the provider; account names,
 quantities, trades, balances, and calculated results remain local. Unsupported,
@@ -129,7 +139,8 @@ The API remains available for inspection and supports these optional filters on
 - `account_id`;
 - `date_from` and `date_to`;
 - `description`;
-- `amount_min` and `amount_max`.
+- `amount_min` and `amount_max`;
+- `category`, using `uncategorized` to select transactions without a category.
 
 ## Database migrations
 
@@ -204,12 +215,43 @@ docker compose down
 Do not run `docker compose down -v` unless you intentionally want to delete the
 stored PostgreSQL data.
 
-## Scope
+## Version guide
 
-V0.1 is a usable local foundation, not the final product. The Revolut activity
-import and manual-price performance view are the first small investment slice;
-on-demand USD quotes are supported, while scheduled quotes, tax reporting,
-categories, dashboards, budgets, and additional banks should still be
-introduced one real use case at a time. Redis, Celery, ML, LLMs, cloud
-infrastructure, microservices, and Kubernetes are not needed for the current
-version.
+The roadmap is provisional. Each version should solve a real daily-use problem;
+it is not permission to build future architecture in advance.
+
+### V0.1 — Local foundation
+
+- FastAPI and PostgreSQL persistence;
+- accounts and normalized transactions;
+- Ibercaja XLSX import with duplicate detection;
+- a small React interface;
+- Docker Compose development and local deployment;
+- the first Revolut investment import and performance view.
+
+### V0.2 — Transactions and categories
+
+- manual categories and conservative automatic categorization rules;
+- category and uncategorized filters;
+- description search, date filters, and transaction pagination;
+- monthly cash-flow and category-spending summaries;
+- a one-time category backfill that preserves manual choices.
+
+### V0.3 — Daily-use overview (provisional)
+
+- make account creation and management available in the web interface;
+- improve account balances and the unified money overview;
+- make import results and history clearer;
+- refine monthly income, spending, and savings summaries from real usage.
+
+### V0.4 — Investment expansion (provisional)
+
+- add an IBKR importer after inspecting a real IBKR export;
+- combine investment positions across Revolut and IBKR accounts;
+- show portfolio allocation;
+- verify FX semantics before combining EUR and USD results.
+
+Budgets, goals, net worth, simulations, ML, and a local AI assistant remain
+later possibilities. Scheduled quotes, tax reporting, and support for another
+bank should be added only for a concrete need. Redis, Celery, cloud
+infrastructure, microservices, and Kubernetes are not required.
