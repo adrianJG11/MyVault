@@ -32,7 +32,13 @@ function App() {
 
   return (
     <main>
-      <h1>Finanzas</h1>
+      <header className="page-header">
+        <p className="page-eyebrow">Local-first personal finance</p>
+        <h1>Dinero</h1>
+        <p className="page-description">
+          Understand your accounts, spending, and investments.
+        </p>
+      </header>
 
       {isLoading && <p>Loading accounts...</p>}
       {error && <p role="alert">{error}</p>}
@@ -43,18 +49,23 @@ function App() {
 
       {accounts.length > 0 && selectedAccountId !== null && (
         <>
-          <label htmlFor="account">Account</label>
-          <select
-            id="account"
-            value={selectedAccountId}
-            onChange={(event) => setSelectedAccountId(Number(event.target.value))}
-          >
-            {accounts.map((account) => (
-              <option key={account.id} value={account.id}>
-                {account.name} — {account.bank_name}
-              </option>
-            ))}
-          </select>
+          <div className="account-selector">
+            <label htmlFor="account">Account</label>
+
+            <select
+              id="account"
+              value={selectedAccountId}
+              onChange={(event) =>
+                setSelectedAccountId(Number(event.target.value))
+              }
+            >
+              {accounts.map((account) => (
+                <option key={account.id} value={account.id}>
+                  {account.name} — {account.bank_name}
+                </option>
+              ))}
+            </select>
+          </div>
 
           <nav className="tabs" aria-label="Finance sections">
             <button
