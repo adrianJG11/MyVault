@@ -443,47 +443,56 @@ export function InvestmentsPanel({ accountId }: InvestmentsPanelProps) {
           </div>
         )}
 
-        <h2>Activity history</h2>
-        <p>
-          {activities.length === 0
-            ? 'No investment activities found.'
-            : `Showing ${pageStart + 1}–${Math.min(
-                pageStart + INVESTMENT_ACTIVITIES_PER_PAGE,
-                activities.length,
-              )} of ${activities.length} investment activities.`}
-        </p>
+        <div className="table-header">
+          <h2>Activity history</h2>
 
-        <table>
-          <thead>
-            <tr>
-              <th>Date</th>
-              <th>Type</th>
-              <th>Ticker</th>
-              <th>Quantity</th>
-              <th>Price</th>
-              <th>Total</th>
-              <th>FX rate</th>
-            </tr>
-          </thead>
+          <p>
+            {activities.length === 0
+              ? 'No investment activities found.'
+              : `Showing ${pageStart + 1}–${Math.min(
+                  pageStart + INVESTMENT_ACTIVITIES_PER_PAGE,
+                  activities.length,
+                )} of ${activities.length} investment activities.`}
+          </p>
+        </div>
 
-          <tbody>
-            {visibleActivities.map((activity) => (
-              <tr key={activity.id}>
-                <td>{dateTimeFormatter.format(new Date(activity.occurred_at))}</td>
-                <td>{activity.activity_type}</td>
-                <td>{activity.ticker ?? '—'}</td>
-                <td>{formatQuantity(activity.quantity)}</td>
-                <td>
-                  {activity.price_per_share === null
-                    ? '—'
-                    : formatMoney(activity.price_per_share, activity.currency)}
-                </td>
-                <td>{formatMoney(activity.total_amount, activity.currency)}</td>
-                <td>{formatQuantity(activity.fx_rate)}</td>
+        <div className="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Type</th>
+                <th>Ticker</th>
+                <th>Quantity</th>
+                <th>Price</th>
+                <th>Total</th>
+                <th>FX rate</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+
+            <tbody>
+              {visibleActivities.map((activity) => (
+                <tr key={activity.id}>
+                  <td>
+                    {dateTimeFormatter.format(new Date(activity.occurred_at))}
+                  </td>
+                  <td>{activity.activity_type}</td>
+                  <td>{activity.ticker ?? '—'}</td>
+                  <td>{formatQuantity(activity.quantity)}</td>
+                  <td>
+                    {activity.price_per_share === null
+                      ? '—'
+                      : formatMoney(activity.price_per_share, activity.currency)}
+                  </td>
+                  <td>
+                    {formatMoney(activity.total_amount, activity.currency)}
+                  </td>
+                  <td>{formatQuantity(activity.fx_rate)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
 
         {totalPages > 1 && (
           <nav className="pagination" aria-label="Investment activity pages">
@@ -514,22 +523,30 @@ export function InvestmentsPanel({ accountId }: InvestmentsPanelProps) {
 
   return (
     <>
-      <form onSubmit={handleImport}>
-        <label htmlFor="revolut-investments-file">
-          Revolut investment CSV
-        </label>
-        <input
-          id="revolut-investments-file"
-          type="file"
-          accept=".csv,text/csv"
-          onChange={(event) => {
-            setSelectedFile(event.target.files?.[0] ?? null)
-            setImportMessage(null)
-          }}
-        />
-        <button type="submit" disabled={selectedFile === null || isImporting}>
-          {isImporting ? 'Importing...' : 'Import'}
-        </button>
+      <form className="import-panel" onSubmit={handleImport}>
+        <h2>Import investment activity</h2>
+        <p>Upload a Revolut investment CSV for the selected account.</p>
+
+        <div className="import-controls">
+          <label htmlFor="revolut-investments-file">
+            Revolut investment CSV
+          </label>
+          <input
+            id="revolut-investments-file"
+            type="file"
+            accept=".csv,text/csv"
+            onChange={(event) => {
+              setSelectedFile(event.target.files?.[0] ?? null)
+              setImportMessage(null)
+            }}
+          />
+          <button
+            type="submit"
+            disabled={selectedFile === null || isImporting}
+          >
+            {isImporting ? 'Importing...' : 'Import'}
+          </button>
+        </div>
       </form>
 
       {importMessage && <p role="status">{importMessage}</p>}
