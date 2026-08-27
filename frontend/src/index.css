@@ -144,6 +144,56 @@ h1 {
   cursor: not-allowed;
 }
 
+.import-panel {
+  margin: 1.5rem 0;
+  padding: 1rem;
+  border: 1px solid #334155;
+  border-radius: 0.75rem;
+  background: #111827;
+}
+
+.import-panel h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.import-panel > p {
+  margin: 0.4rem 0 1rem;
+  color: #94a3b8;
+}
+
+.import-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.import-controls label {
+  flex-basis: 100%;
+  color: #94a3b8;
+  font-size: 0.875rem;
+}
+
+.import-controls input[type="file"] {
+  flex: 1 1 18rem;
+  color: #cbd5e1;
+}
+
+.import-controls button {
+  padding: 0.6rem 0.9rem;
+  border: 1px solid #0284c7;
+  border-radius: 0.5rem;
+  color: #e0f2fe;
+  background: #075985;
+  cursor: pointer;
+}
+
+.import-controls button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .summary {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));

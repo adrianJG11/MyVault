@@ -469,20 +469,28 @@ export function TransactionsPanel({ accountId }: TransactionsPanelProps) {
         </button>
       </section>
 
-      <form onSubmit={handleIbercajaImport}>
-        <label htmlFor="ibercaja-file">Ibercaja XLSX</label>
-        <input
-          id="ibercaja-file"
-          type="file"
-          accept=".xlsx"
-          onChange={(event) => {
-            setSelectedFile(event.target.files?.[0] ?? null)
-            setImportMessage(null)
-          }}
-        />
-        <button type="submit" disabled={selectedFile === null || isImporting}>
-          {isImporting ? 'Importing...' : 'Import'}
-        </button>
+      <form className="import-panel" onSubmit={handleIbercajaImport}>
+        <h2>Import transactions</h2>
+        <p>Upload an Ibercaja XLSX export for the selected account.</p>
+
+        <div className="import-controls">
+          <label htmlFor="ibercaja-file">Ibercaja XLSX</label>
+          <input
+            id="ibercaja-file"
+            type="file"
+            accept=".xlsx"
+            onChange={(event) => {
+              setSelectedFile(event.target.files?.[0] ?? null)
+              setImportMessage(null)
+            }}
+          />
+          <button
+            type="submit"
+            disabled={selectedFile === null || isImporting}
+          >
+            {isImporting ? 'Importing...' : 'Import'}
+          </button>
+        </div>
       </form>
 
       {importMessage && <p role="status">{importMessage}</p>}
