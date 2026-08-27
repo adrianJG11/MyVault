@@ -1,53 +1,82 @@
 import json
 from io import BytesIO
+from urllib.parse import parse_qs, urlparse
 from urllib.request import Request
 
 import pytest
 
 from investments import market_prices
-from investments.market_prices import MarketPriceError, fetch_twelve_data_prices
+from investments.market_prices import (
+    MarketPriceError,
+    eodhd_symbol_for,
+    fetch_eodhd_prices,
+)
 
 
-def test_fetch_twelve_data_prices_returns_valid_batch_prices(
+def test_eodhd_symbol_for_uses_us_exchange_and_verified_eur_override() -> None:
+    assert eodhd_symbol_for("nvda", "usd") == "NVDA.US"
+    assert eodhd_symbol_for("ail", "eur") == "AI.PA"
+    assert eodhd_symbol_for("unknown", "eur") is None
+
+
+def test_fetch_eodhd_prices_returns_latest_valid_prices(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    captured_request: Request | None = None
+    captured_requests: list[Request] = []
 
     def fake_urlopen(request: Request, timeout: int) -> BytesIO:
-        nonlocal captured_request
-        captured_request = request
+        captured_requests.append(request)
         assert timeout == 10
-        return BytesIO(
-            json.dumps(
-                {
-                    "NVDA": {"price": "182.50"},
-                    "NOW": {"price": "0", "status": "error"},
-                }
-            ).encode()
-        )
+
+        if "/AI.PA?" in request.full_url:
+            return BytesIO(
+                json.dumps([{"date": "2026-08-27", "close": 166.78}]).encode()
+            )
+
+        return BytesIO(json.dumps([{"date": "2026-08-26", "close": 209.66}]).encode())
 
     monkeypatch.setattr(market_prices, "urlopen", fake_urlopen)
 
-    result = fetch_twelve_data_prices(["now", "NVDA", "NVDA"], "fake-key")
+    result = fetch_eodhd_prices(
+        {"NVDA": "NVDA.US", "AIL": "AI.PA"},
+        "fake-key",
+    )
 
-    assert result.prices == {"NVDA": market_prices.Decimal("182.50")}
-    assert result.unavailable == ["NOW"]
-    assert captured_request is not None
-    assert captured_request.get_header("Authorization") == "apikey fake-key"
-    assert "fake-key" not in captured_request.full_url
+    assert result.prices == {
+        "AIL": market_prices.Decimal("166.78"),
+        "NVDA": market_prices.Decimal("209.66"),
+    }
+    assert result.unavailable == []
+    assert len(captured_requests) == 2
+
+    for request in captured_requests:
+        query = parse_qs(urlparse(request.full_url).query)
+        assert query["api_token"] == ["fake-key"]
+        assert query["fmt"] == ["json"]
+        assert query["order"] == ["d"]
 
 
-def test_fetch_twelve_data_prices_rejects_provider_error(
+def test_fetch_eodhd_prices_marks_empty_results_unavailable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     def fake_urlopen(request: Request, timeout: int) -> BytesIO:
-        return BytesIO(
-            json.dumps(
-                {"status": "error", "code": 429, "message": "Limit reached"}
-            ).encode()
-        )
+        return BytesIO(b"[]")
+
+    monkeypatch.setattr(market_prices, "urlopen", fake_urlopen)
+
+    result = fetch_eodhd_prices({"UNKNOWN": "UNKNOWN.US"}, "fake-key")
+
+    assert result.prices == {}
+    assert result.unavailable == ["UNKNOWN"]
+
+
+def test_fetch_eodhd_prices_rejects_provider_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_urlopen(request: Request, timeout: int) -> BytesIO:
+        return BytesIO(json.dumps({"code": 429, "message": "Limit reached"}).encode())
 
     monkeypatch.setattr(market_prices, "urlopen", fake_urlopen)
 
     with pytest.raises(MarketPriceError):
-        fetch_twelve_data_prices(["NVDA"], "fake-key")
+        fetch_eodhd_prices({"NVDA": "NVDA.US"}, "fake-key")

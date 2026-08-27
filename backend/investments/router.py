@@ -10,7 +10,11 @@ from sqlalchemy.orm import Session
 
 from database import get_session
 from investments.calculations import calculate_investment_summary
-from investments.market_prices import MarketPriceError, fetch_twelve_data_prices
+from investments.market_prices import (
+    MarketPriceError,
+    eodhd_symbol_for,
+    fetch_eodhd_prices,
+)
 from investments.revolut_importer import parse_revolut_investment_csv
 from models import Account, InvestmentActivity, InvestmentPrice
 from schemas import ImportResult
@@ -264,21 +268,26 @@ def refresh_investment_prices(
         ) from error
 
     open_positions = [position for position in positions if position.quantity > 0]
-    automatic_positions = [
-        position for position in open_positions if position.currency == "USD"
-    ]
+    provider_symbols = {
+        position.ticker: provider_symbol
+        for position in open_positions
+        if (provider_symbol := eodhd_symbol_for(position.ticker, position.currency))
+        is not None
+    }
     manual_only = sorted(
-        position.ticker for position in open_positions if position.currency != "USD"
+        position.ticker
+        for position in open_positions
+        if position.ticker not in provider_symbols
     )
 
-    if not automatic_positions:
+    if not provider_symbols:
         return InvestmentPriceRefreshResult(
             updated=[],
             unavailable=[],
             manual_only=manual_only,
         )
 
-    api_key = os.getenv("TWELVE_DATA_API_KEY", "").strip()
+    api_key = os.getenv("EODHD_API_KEY", "").strip()
 
     if not api_key:
         raise HTTPException(
@@ -287,19 +296,14 @@ def refresh_investment_prices(
         )
 
     try:
-        result = fetch_twelve_data_prices(
-            [position.ticker for position in automatic_positions],
-            api_key,
-        )
+        result = fetch_eodhd_prices(provider_symbols, api_key)
     except MarketPriceError as error:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Market price provider unavailable",
         ) from error
 
-    currencies = {
-        position.ticker: position.currency for position in automatic_positions
-    }
+    currencies = {position.ticker: position.currency for position in open_positions}
     updated_at = datetime.now(UTC)
 
     for ticker, price in result.prices.items():

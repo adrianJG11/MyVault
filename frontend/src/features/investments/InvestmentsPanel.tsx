@@ -226,7 +226,7 @@ export function InvestmentsPanel({ accountId }: InvestmentsPanelProps) {
           <div className="investment-performance">
             <h2>Investment performance</h2>
             <p>
-              Results use FIFO and stay separated by currency. Supported USD
+              Results use FIFO and stay separated by currency. Supported market
               prices can be refreshed on demand; manual prices remain available.
             </p>
 

@@ -48,7 +48,7 @@ Create a `.env` file in the repository root:
 POSTGRES_DB=finanzas
 POSTGRES_USER=finanzas
 POSTGRES_PASSWORD=replace-with-a-private-password
-TWELVE_DATA_API_KEY=replace-with-your-private-api-key
+EODHD_API_KEY=replace-with-your-private-api-key
 ```
 
 The `.env` file is ignored by Git. Never commit it or put its values in the
@@ -112,10 +112,11 @@ matches confidently. Categories can be corrected manually from the transaction
 table. Existing records were backfilled once with the same rules without
 overwriting categories that had already been assigned manually.
 
-After importing, use **Refresh market prices** to retrieve supported USD prices
-from Twelve Data. Only ticker symbols are sent to the provider; account names,
-quantities, trades, balances, and calculated results remain local. Unsupported,
-unavailable, and non-USD positions keep their manual price input as a fallback.
+After importing, use **Refresh market prices** to retrieve end-of-day prices
+from EODHD. Only ticker symbols are sent to the provider; account names,
+quantities, trades, balances, and calculated results remain local. USD tickers
+and verified international listings are refreshed automatically. Unsupported
+or unavailable listings keep their manual price input as a fallback.
 
 The application calculates remaining FIFO cost, market value, unrealized
 profit/loss, realized profit/loss, dividends, and total result. EUR and USD

@@ -973,7 +973,7 @@ def test_update_investment_price_rejects_invalid_or_unknown_ticker(
     assert unknown_ticker_response.json() == {"detail": "Ticker not found"}
 
 
-def test_refresh_investment_prices_updates_usd_positions(
+def test_refresh_investment_prices_updates_supported_positions(
     clean_database: None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -996,33 +996,57 @@ def test_refresh_investment_prices_updates_usd_positions(
             )
         },
     )
-    captured_call: tuple[list[str], str] | None = None
+    client.post(
+        f"/accounts/{account_id}/imports/revolut-investments",
+        files={
+            "file": (
+                "eur-investment.csv",
+                (
+                    b"Date,Ticker,Type,Quantity,Price per share,Total Amount,Currency,FX Rate\n"
+                    b"2026-01-11T12:30:00Z,AIL,BUY - MARKET,1,EUR 172.46,EUR 172.46,EUR,1\n"
+                ),
+                "text/csv",
+            )
+        },
+    )
+    captured_call: tuple[dict[str, str], str] | None = None
 
-    def fake_fetch(symbols: list[str], api_key: str) -> MarketPriceResult:
+    def fake_fetch(symbols: dict[str, str], api_key: str) -> MarketPriceResult:
         nonlocal captured_call
         captured_call = (symbols, api_key)
-        return MarketPriceResult(prices={"FAKE": Decimal(120)}, unavailable=[])
+        return MarketPriceResult(
+            prices={"AIL": Decimal("166.78"), "FAKE": Decimal(120)},
+            unavailable=[],
+        )
 
-    monkeypatch.setenv("TWELVE_DATA_API_KEY", "fake-key")
-    monkeypatch.setattr(investments_router, "fetch_twelve_data_prices", fake_fetch)
+    monkeypatch.setenv("EODHD_API_KEY", "fake-key")
+    monkeypatch.setattr(investments_router, "fetch_eodhd_prices", fake_fetch)
 
     response = client.post(f"/accounts/{account_id}/investment-prices/refresh")
 
     assert response.status_code == 200
     assert response.json() == {
-        "updated": ["FAKE"],
+        "updated": ["AIL", "FAKE"],
         "unavailable": [],
         "manual_only": [],
     }
-    assert captured_call == (["FAKE"], "fake-key")
+    assert captured_call == (
+        {"AIL": "AI.PA", "FAKE": "FAKE.US"},
+        "fake-key",
+    )
 
     summary_response = client.get(
         "/investment-summary",
         params={"account_id": account_id},
     )
-    assert Decimal(summary_response.json()["positions"][0]["current_price"]) == Decimal(
-        120
-    )
+    current_prices = {
+        position["ticker"]: Decimal(position["current_price"])
+        for position in summary_response.json()["positions"]
+    }
+    assert current_prices == {
+        "AIL": Decimal("166.78"),
+        "FAKE": Decimal(120),
+    }
 
 
 def test_refresh_investment_prices_requires_api_key(
@@ -1048,7 +1072,7 @@ def test_refresh_investment_prices_requires_api_key(
             )
         },
     )
-    monkeypatch.delenv("TWELVE_DATA_API_KEY", raising=False)
+    monkeypatch.delenv("EODHD_API_KEY", raising=False)
 
     response = client.post(f"/accounts/{account_id}/investment-prices/refresh")
 

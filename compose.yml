@@ -23,7 +23,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_HOST: db
-      TWELVE_DATA_API_KEY: ${TWELVE_DATA_API_KEY:-}
+      EODHD_API_KEY: ${EODHD_API_KEY:-}
     depends_on:
       db:
         condition: service_healthy
