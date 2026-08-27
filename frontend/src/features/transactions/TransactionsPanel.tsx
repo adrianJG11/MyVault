@@ -327,41 +327,43 @@ export function TransactionsPanel({ accountId }: TransactionsPanelProps) {
 
         {categoryError && <p role="alert">{categoryError}</p>}
 
-        <table>
-          <thead>
-            <tr>
-              <th>Date</th>
-              <th>Description</th>
-              <th>Category</th>
-              <th>Amount</th>
-            </tr>
-          </thead>
-
-          <tbody>
-            {visibleTransactions.map((transaction) => (
-              <tr key={transaction.id}>
-                <td>{formatDate(transaction.operation_date)}</td>
-                <td>{transaction.description}</td>
-                <td>
-                  <TransactionCategorySelect
-                    transactionId={transaction.id}
-                    category={transaction.category}
-                    onChange={handleCategoryChange}
-                  />
-                </td>
-                <td
-                  className={
-                    Number(transaction.amount) >= 0
-                      ? 'amount-positive'
-                      : 'amount-negative'
-                  }
-                >
-                  {euroFormatter.format(Number(transaction.amount))}
-                </td>
+        <div className="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Description</th>
+                <th>Category</th>
+                <th>Amount</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+
+            <tbody>
+              {visibleTransactions.map((transaction) => (
+                <tr key={transaction.id}>
+                  <td>{formatDate(transaction.operation_date)}</td>
+                  <td>{transaction.description}</td>
+                  <td>
+                    <TransactionCategorySelect
+                      transactionId={transaction.id}
+                      category={transaction.category}
+                      onChange={handleCategoryChange}
+                    />
+                  </td>
+                  <td
+                    className={
+                      Number(transaction.amount) >= 0
+                        ? 'amount-positive'
+                        : 'amount-negative'
+                    }
+                  >
+                    {euroFormatter.format(Number(transaction.amount))}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
 
         {totalPages > 1 && (
           <nav className="pagination" aria-label="Transaction pages">

@@ -420,7 +420,7 @@ h1 {
   background: #38bdf8;
 }
 
-section {
+.table-container {
   overflow-x: auto;
 }
 
