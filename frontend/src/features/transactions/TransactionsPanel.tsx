@@ -39,6 +39,7 @@ export function TransactionsPanel({ accountId }: TransactionsPanelProps) {
   const [isImporting, setIsImporting] = useState(false)
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
+  const [monthFilter, setMonthFilter] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('')
   const [descriptionFilter, setDescriptionFilter] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
@@ -212,9 +213,28 @@ export function TransactionsPanel({ accountId }: TransactionsPanelProps) {
     }
   }
 
+  function handleMonthChange(month: string) {
+    setMonthFilter(month)
+    setIsLoading(true)
+    setError(null)
+
+    if (month === '') {
+      setDateFrom('')
+      setDateTo('')
+      return
+    }
+
+    const [year, monthNumber] = month.split('-').map(Number)
+    const lastDay = new Date(year, monthNumber, 0).getDate()
+
+    setDateFrom(`${month}-01`)
+    setDateTo(`${month}-${String(lastDay).padStart(2, '0')}`)
+  }
+
   function handleClearFilters() {
     setIsLoading(true)
     setError(null)
+    setMonthFilter('')
     setDateFrom('')
     setDateTo('')
     setCategoryFilter('')
@@ -230,15 +250,6 @@ export function TransactionsPanel({ accountId }: TransactionsPanelProps) {
   } else {
     content = (
       <section>
-        <p>
-          {transactions.length === 0
-            ? 'No transactions found.'
-            : `Showing ${pageStart + 1}–${Math.min(
-                pageStart + TRANSACTIONS_PER_PAGE,
-                transactions.length,
-              )} of ${transactions.length} transactions.`}
-        </p>
-
         <div className="summary">
           <div className="summary-card">
             <span>Money in</span>
@@ -327,6 +338,19 @@ export function TransactionsPanel({ accountId }: TransactionsPanelProps) {
 
         {categoryError && <p role="alert">{categoryError}</p>}
 
+        <div className="table-header">
+          <h2>Transactions</h2>
+
+          <p>
+            {transactions.length === 0
+              ? 'No transactions found.'
+              : `Showing ${pageStart + 1}–${Math.min(
+                  pageStart + TRANSACTIONS_PER_PAGE,
+                  transactions.length,
+                )} of ${transactions.length} transactions.`}
+          </p>
+        </div>
+
         <div className="table-container">
           <table>
             <thead>
@@ -399,6 +423,15 @@ export function TransactionsPanel({ accountId }: TransactionsPanelProps) {
 
         <div className="date-filters">
           <label>
+            Month
+            <input
+              type="month"
+              value={monthFilter}
+              onChange={(event) => handleMonthChange(event.target.value)}
+            />
+          </label>
+
+          <label>
             From
             <input
               type="date"
@@ -407,6 +440,7 @@ export function TransactionsPanel({ accountId }: TransactionsPanelProps) {
               onChange={(event) => {
                 setIsLoading(true)
                 setError(null)
+                setMonthFilter('')
                 setDateFrom(event.target.value)
               }}
             />
@@ -421,6 +455,7 @@ export function TransactionsPanel({ accountId }: TransactionsPanelProps) {
               onChange={(event) => {
                 setIsLoading(true)
                 setError(null)
+                setMonthFilter('')
                 setDateTo(event.target.value)
               }}
             />
