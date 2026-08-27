@@ -88,6 +88,7 @@ export function InvestmentsPanel({ accountId }: InvestmentsPanelProps) {
   const [savingPriceTicker, setSavingPriceTicker] = useState<string | null>(null)
   const [isRefreshingPrices, setIsRefreshingPrices] = useState(false)
   const [priceMessage, setPriceMessage] = useState<string | null>(null)
+  const [showClosedPositions, setShowClosedPositions] = useState(false)
 
   const totalPages = Math.max(
     1,
@@ -98,6 +99,9 @@ export function InvestmentsPanel({ accountId }: InvestmentsPanelProps) {
     pageStart,
     pageStart + INVESTMENT_ACTIVITIES_PER_PAGE,
   )
+  const displayedPositions = showClosedPositions
+    ? summary.positions
+    : summary.positions.filter((position) => Number(position.quantity) > 0)
 
   useEffect(() => {
     async function loadInvestments() {
@@ -325,11 +329,25 @@ export function InvestmentsPanel({ accountId }: InvestmentsPanelProps) {
               </div>
             ))}
 
-            <h2>Positions</h2>
+            <div className="positions-header">
+              <h2>Positions</h2>
+
+              <label>
+                <input
+                  type="checkbox"
+                  checked={showClosedPositions}
+                  onChange={(event) =>
+                    setShowClosedPositions(event.target.checked)
+                  }
+                />
+                Show closed positions
+              </label>
+            </div>
+
             {priceMessage && <p role="status">{priceMessage}</p>}
 
             <div className="positions-grid">
-              {summary.positions.map((position) => (
+              {displayedPositions.map((position) => (
                 <article className="position-card" key={position.ticker}>
                   <header className="position-card-header">
                     <div>

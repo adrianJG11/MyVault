@@ -244,6 +244,31 @@ h1 {
   margin-bottom: 2rem;
 }
 
+.positions-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin: 2rem 0 1rem;
+}
+
+.positions-header h2 {
+  margin: 0;
+}
+
+.positions-header label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #cbd5e1;
+  cursor: pointer;
+}
+
+.positions-header input {
+  accent-color: #38bdf8;
+}
+
 .missing-prices {
   padding: 0.75rem;
   border-left: 3px solid #f59e0b;
