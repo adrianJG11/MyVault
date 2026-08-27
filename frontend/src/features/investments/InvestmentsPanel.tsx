@@ -368,6 +368,16 @@ export function InvestmentsPanel({ accountId }: InvestmentsPanelProps) {
                               position.currency,
                             )}
                       </strong>
+                      {position.unrealized_return_percent !== null && (
+                        <small
+                          className={amountClass(
+                            position.unrealized_return_percent,
+                          )}
+                        >
+                          Unrealized return:{' '}
+                          {formatPercent(position.unrealized_return_percent)}
+                        </small>
+                      )}
                     </div>
                   </header>
 
