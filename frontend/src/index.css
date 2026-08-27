@@ -90,6 +90,19 @@ h1 {
   border-bottom-color: #38bdf8;
 }
 
+.filter-panel {
+  margin: 1.5rem 0;
+  padding: 1rem;
+  border: 1px solid #334155;
+  border-radius: 0.75rem;
+  background: #111827;
+}
+
+.filter-panel h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
 .date-filters {
   display: flex;
   flex-wrap: wrap;
@@ -99,7 +112,36 @@ h1 {
 
 .date-filters label {
   display: grid;
+  flex: 1 1 10rem;
   gap: 0.25rem;
+  color: #94a3b8;
+  font-size: 0.875rem;
+}
+
+.date-filters input,
+.date-filters select {
+  width: 100%;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid #475569;
+  border-radius: 0.5rem;
+  color: inherit;
+  background: #0f172a;
+}
+
+.filter-panel > button {
+  display: block;
+  margin-left: auto;
+  padding: 0.55rem 0.8rem;
+  border: 1px solid #475569;
+  border-radius: 0.5rem;
+  color: #cbd5e1;
+  background: #1e293b;
+  cursor: pointer;
+}
+
+.filter-panel > button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .summary {

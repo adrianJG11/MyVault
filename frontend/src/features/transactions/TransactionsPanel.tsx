@@ -42,6 +42,11 @@ export function TransactionsPanel({ accountId }: TransactionsPanelProps) {
   const [categoryFilter, setCategoryFilter] = useState('')
   const [descriptionFilter, setDescriptionFilter] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
+  const hasActiveFilters =
+    dateFrom !== '' ||
+    dateTo !== '' ||
+    categoryFilter !== '' ||
+    descriptionFilter !== ''
 
   const totalPages = Math.max(
     1,
@@ -205,6 +210,15 @@ export function TransactionsPanel({ accountId }: TransactionsPanelProps) {
     } catch {
       setCategoryError('Could not update the transaction category.')
     }
+  }
+
+  function handleClearFilters() {
+    setIsLoading(true)
+    setError(null)
+    setDateFrom('')
+    setDateTo('')
+    setCategoryFilter('')
+    setDescriptionFilter('')
   }
 
   let content
@@ -378,70 +392,82 @@ export function TransactionsPanel({ accountId }: TransactionsPanelProps) {
 
   return (
     <>
-      <div className="date-filters">
-        <label>
-          From
-          <input
-            type="date"
-            value={dateFrom}
-            max={dateTo || undefined}
-            onChange={(event) => {
-              setIsLoading(true)
-              setError(null)
-              setDateFrom(event.target.value)
-            }}
-          />
-        </label>
+      <section className="filter-panel">
+        <h2>Filters</h2>
 
-        <label>
-          To
-          <input
-            type="date"
-            value={dateTo}
-            min={dateFrom || undefined}
-            onChange={(event) => {
-              setIsLoading(true)
-              setError(null)
-              setDateTo(event.target.value)
-            }}
-          />
-        </label>
+        <div className="date-filters">
+          <label>
+            From
+            <input
+              type="date"
+              value={dateFrom}
+              max={dateTo || undefined}
+              onChange={(event) => {
+                setIsLoading(true)
+                setError(null)
+                setDateFrom(event.target.value)
+              }}
+            />
+          </label>
 
-        <label>
-          Category
-          <select
-            value={categoryFilter}
-            onChange={(event) => {
-              setIsLoading(true)
-              setError(null)
-              setCategoryFilter(event.target.value)
-            }}
-          >
-            <option value="">All categories</option>
-            <option value="uncategorized">Uncategorized</option>
+          <label>
+            To
+            <input
+              type="date"
+              value={dateTo}
+              min={dateFrom || undefined}
+              onChange={(event) => {
+                setIsLoading(true)
+                setError(null)
+                setDateTo(event.target.value)
+              }}
+            />
+          </label>
 
-            {transactionCategories.map((category) => (
-              <option key={category.value} value={category.value}>
-                {category.label}
-              </option>
-            ))}
-          </select>
-        </label>
+          <label>
+            Category
+            <select
+              value={categoryFilter}
+              onChange={(event) => {
+                setIsLoading(true)
+                setError(null)
+                setCategoryFilter(event.target.value)
+              }}
+            >
+              <option value="">All categories</option>
+              <option value="uncategorized">Uncategorized</option>
 
-        <label>
-          Search
-          <input
-            type="search"
-            value={descriptionFilter}
-            placeholder="Transaction description"
-            onChange={(event) => {
-              setIsLoading(true)
-              setError(null)
-              setDescriptionFilter(event.target.value)
-            }}
-          />
-        </label>
-      </div>
+              {transactionCategories.map((category) => (
+                <option key={category.value} value={category.value}>
+                  {category.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            Search
+            <input
+              type="search"
+              value={descriptionFilter}
+              placeholder="Transaction description"
+              onChange={(event) => {
+                setIsLoading(true)
+                setError(null)
+                setDescriptionFilter(event.target.value)
+              }}
+            />
+          </label>
+        </div>
+
+        <button
+          type="button"
+          disabled={!hasActiveFilters}
+          onClick={handleClearFilters}
+        >
+          Clear filters
+        </button>
+      </section>
 
       <form onSubmit={handleIbercajaImport}>
         <label htmlFor="ibercaja-file">Ibercaja XLSX</label>
