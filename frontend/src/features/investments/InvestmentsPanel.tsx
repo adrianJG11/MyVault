@@ -81,13 +81,19 @@ export function InvestmentsPanel({ accountId }: InvestmentsPanelProps) {
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
-  const [importMessage, setImportMessage] = useState<string | null>(null)
+  const [importMessage, setImportMessage] = useState<{
+    text: string
+    tone: 'success' | 'error'
+  } | null>(null)
   const [isImporting, setIsImporting] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
   const [priceDrafts, setPriceDrafts] = useState<Record<string, string>>({})
   const [savingPriceTicker, setSavingPriceTicker] = useState<string | null>(null)
   const [isRefreshingPrices, setIsRefreshingPrices] = useState(false)
-  const [priceMessage, setPriceMessage] = useState<string | null>(null)
+  const [priceMessage, setPriceMessage] = useState<{
+    text: string
+    tone: 'success' | 'error'
+  } | null>(null)
   const [showClosedPositions, setShowClosedPositions] = useState(false)
 
   const totalPages = Math.max(
@@ -142,13 +148,17 @@ export function InvestmentsPanel({ accountId }: InvestmentsPanelProps) {
       setSummary(data.summary)
       setPriceDrafts(priceDraftsFrom(data.summary))
       setCurrentPage(1)
-      setImportMessage(
-        `Imported ${result.imported} new investment activities.`,
-      )
+      setImportMessage({
+        text: `Imported ${result.imported} new investment activities.`,
+        tone: 'success',
+      })
       setSelectedFile(null)
       form.reset()
     } catch {
-      setImportMessage('The investment import or activity refresh failed.')
+      setImportMessage({
+        text: 'The investment import or activity refresh failed.',
+        tone: 'error',
+      })
     } finally {
       setIsImporting(false)
     }
@@ -173,9 +183,15 @@ export function InvestmentsPanel({ accountId }: InvestmentsPanelProps) {
       const refreshedSummary = await fetchInvestmentSummary(accountId)
       setSummary(refreshedSummary)
       setPriceDrafts(priceDraftsFrom(refreshedSummary))
-      setPriceMessage(`Updated the current price for ${ticker}.`)
+      setPriceMessage({
+        text: `Updated the current price for ${ticker}.`,
+        tone: 'success',
+      })
     } catch {
-      setPriceMessage(`Could not update the current price for ${ticker}.`)
+      setPriceMessage({
+        text: `Could not update the current price for ${ticker}.`,
+        tone: 'error',
+      })
     } finally {
       setSavingPriceTicker(null)
     }
@@ -201,13 +217,15 @@ export function InvestmentsPanel({ accountId }: InvestmentsPanelProps) {
       ]
         .filter(Boolean)
         .join(' ')
-      setPriceMessage(
-        `Updated ${result.updated.length} market prices.${details ? ` ${details}` : ''}`,
-      )
+      setPriceMessage({
+        text: `Updated ${result.updated.length} market prices.${details ? ` ${details}` : ''}`,
+        tone: 'success',
+      })
     } catch {
-      setPriceMessage(
-        'Could not refresh market prices. Saved manual prices were not changed.',
-      )
+      setPriceMessage({
+        text: 'Could not refresh market prices. Saved manual prices were not changed.',
+        tone: 'error',
+      })
     } finally {
       setIsRefreshingPrices(false)
     }
@@ -216,29 +234,42 @@ export function InvestmentsPanel({ accountId }: InvestmentsPanelProps) {
   let content: ReactNode
 
   if (isLoading) {
-    content = <p>Loading investment activities...</p>
+    content = (
+      <p className="notice notice-info">Loading investment activities...</p>
+    )
   } else if (error) {
-    content = <p role="alert">{error}</p>
+    content = (
+      <p className="notice notice-error" role="alert">
+        {error}
+      </p>
+    )
   } else {
     content = (
       <section>
         {summary.currencies.length > 0 && (
           <div className="investment-performance">
-            <h2>Investment performance</h2>
-            <p>
-              Results use FIFO and stay separated by currency. Supported market
-              prices can be refreshed on demand; manual prices remain available.
-            </p>
+            <header className="section-header">
+              <div>
+                <p className="section-eyebrow">Portfolio</p>
+                <h2>Investment performance</h2>
+                <p>
+                  FIFO results stay separated by currency. Refresh supported
+                  prices or enter them manually.
+                </p>
+              </div>
 
-            <div className="investment-actions">
-              <button
-                type="button"
-                disabled={isRefreshingPrices}
-                onClick={() => void handlePriceRefresh()}
-              >
-                {isRefreshingPrices ? 'Refreshing...' : 'Refresh market prices'}
-              </button>
-            </div>
+              <div className="investment-actions">
+                <button
+                  type="button"
+                  disabled={isRefreshingPrices}
+                  onClick={() => void handlePriceRefresh()}
+                >
+                  {isRefreshingPrices
+                    ? 'Refreshing...'
+                    : 'Refresh market prices'}
+                </button>
+              </div>
+            </header>
 
             {summary.currencies.map((currencySummary) => (
               <div
@@ -312,7 +343,7 @@ export function InvestmentsPanel({ accountId }: InvestmentsPanelProps) {
                     </strong>
                   </div>
 
-                  <div className="summary-card">
+                  <div className="summary-card summary-card-highlight">
                     <span>Total result</span>
                     <strong
                       className={amountClass(currencySummary.total_result)}
@@ -326,6 +357,45 @@ export function InvestmentsPanel({ accountId }: InvestmentsPanelProps) {
                     </strong>
                   </div>
                 </div>
+
+                {currencySummary.market_value !== null &&
+                  Number(currencySummary.market_value) > 0 && (
+                    <div className="allocation-chart">
+                      <h4>Portfolio allocation</h4>
+
+                      {summary.positions
+                        .filter(
+                          (position) =>
+                            position.currency === currencySummary.currency &&
+                            Number(position.quantity) > 0 &&
+                            position.market_value !== null,
+                        )
+                        .map((position) => {
+                          const allocation =
+                            (Number(position.market_value) /
+                              Number(currencySummary.market_value)) *
+                            100
+
+                          return (
+                            <div
+                              className="allocation-position"
+                              key={position.ticker}
+                            >
+                              <div className="allocation-label">
+                                <strong>{position.ticker}</strong>
+                                <span>{formatPercent(String(allocation))}</span>
+                              </div>
+                              <div className="allocation-track">
+                                <div
+                                  className="allocation-bar"
+                                  style={{ width: `${allocation}%` }}
+                                />
+                              </div>
+                            </div>
+                          )
+                        })}
+                    </div>
+                  )}
               </div>
             ))}
 
@@ -344,7 +414,14 @@ export function InvestmentsPanel({ accountId }: InvestmentsPanelProps) {
               </label>
             </div>
 
-            {priceMessage && <p role="status">{priceMessage}</p>}
+            {priceMessage && (
+              <p
+                className={`notice notice-${priceMessage.tone}`}
+                role={priceMessage.tone === 'error' ? 'alert' : 'status'}
+              >
+                {priceMessage.text}
+              </p>
+            )}
 
             <div className="positions-grid">
               {displayedPositions.map((position) => (
@@ -551,33 +628,43 @@ export function InvestmentsPanel({ accountId }: InvestmentsPanelProps) {
 
   return (
     <>
-      <form className="import-panel" onSubmit={handleImport}>
-        <h2>Import investment activity</h2>
-        <p>Upload a Revolut investment CSV for the selected account.</p>
+      <details className="import-panel">
+        <summary>Import investment activity</summary>
 
-        <div className="import-controls">
-          <label htmlFor="revolut-investments-file">
-            Revolut investment CSV
-          </label>
-          <input
-            id="revolut-investments-file"
-            type="file"
-            accept=".csv,text/csv"
-            onChange={(event) => {
-              setSelectedFile(event.target.files?.[0] ?? null)
-              setImportMessage(null)
-            }}
-          />
-          <button
-            type="submit"
-            disabled={selectedFile === null || isImporting}
-          >
-            {isImporting ? 'Importing...' : 'Import'}
-          </button>
-        </div>
-      </form>
+        <form onSubmit={handleImport}>
+          <p>Upload a Revolut investment CSV for the selected account.</p>
 
-      {importMessage && <p role="status">{importMessage}</p>}
+          <div className="import-controls">
+            <label htmlFor="revolut-investments-file">
+              Revolut investment CSV
+            </label>
+            <input
+              id="revolut-investments-file"
+              type="file"
+              accept=".csv,text/csv"
+              onChange={(event) => {
+                setSelectedFile(event.target.files?.[0] ?? null)
+                setImportMessage(null)
+              }}
+            />
+            <button
+              type="submit"
+              disabled={selectedFile === null || isImporting}
+            >
+              {isImporting ? 'Importing...' : 'Import'}
+            </button>
+          </div>
+        </form>
+      </details>
+
+      {importMessage && (
+        <p
+          className={`notice notice-${importMessage.tone}`}
+          role={importMessage.tone === 'error' ? 'alert' : 'status'}
+        >
+          {importMessage.text}
+        </p>
+      )}
       {content}
     </>
   )

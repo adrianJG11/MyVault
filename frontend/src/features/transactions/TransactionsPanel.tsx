@@ -35,7 +35,10 @@ export function TransactionsPanel({ accountId }: TransactionsPanelProps) {
   const [categoryError, setCategoryError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
-  const [importMessage, setImportMessage] = useState<string | null>(null)
+  const [importMessage, setImportMessage] = useState<{
+    text: string
+    tone: 'success' | 'error'
+  } | null>(null)
   const [isImporting, setIsImporting] = useState(false)
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
@@ -179,11 +182,17 @@ export function TransactionsPanel({ accountId }: TransactionsPanelProps) {
 
       setTransactions(refreshedTransactions)
       setCurrentPage(1)
-      setImportMessage(`Imported ${result.imported} new transactions.`)
+      setImportMessage({
+        text: `Imported ${result.imported} new transactions.`,
+        tone: 'success',
+      })
       setSelectedFile(null)
       form.reset()
     } catch {
-      setImportMessage('The import or transaction refresh failed.')
+      setImportMessage({
+        text: 'The import or transaction refresh failed.',
+        tone: 'error',
+      })
     } finally {
       setIsImporting(false)
     }
@@ -244,9 +253,13 @@ export function TransactionsPanel({ accountId }: TransactionsPanelProps) {
   let content
 
   if (isLoading) {
-    content = <p>Loading transactions...</p>
+    content = <p className="notice notice-info">Loading transactions...</p>
   } else if (error) {
-    content = <p role="alert">{error}</p>
+    content = (
+      <p className="notice notice-error" role="alert">
+        {error}
+      </p>
+    )
   } else {
     content = (
       <section>
@@ -265,7 +278,7 @@ export function TransactionsPanel({ accountId }: TransactionsPanelProps) {
             </strong>
           </div>
 
-          <div className="summary-card">
+          <div className="summary-card summary-card-highlight">
             <span>Net</span>
             <strong
               className={net >= 0 ? 'amount-positive' : 'amount-negative'}
@@ -336,7 +349,11 @@ export function TransactionsPanel({ accountId }: TransactionsPanelProps) {
           </div>
         )}
 
-        {categoryError && <p role="alert">{categoryError}</p>}
+        {categoryError && (
+          <p className="notice notice-error" role="alert">
+            {categoryError}
+          </p>
+        )}
 
         <div className="table-header">
           <h2>Transactions</h2>
@@ -506,31 +523,41 @@ export function TransactionsPanel({ accountId }: TransactionsPanelProps) {
         </button>
       </section>
 
-      <form className="import-panel" onSubmit={handleIbercajaImport}>
-        <h2>Import transactions</h2>
-        <p>Upload an Ibercaja XLSX export for the selected account.</p>
+      <details className="import-panel">
+        <summary>Import transactions</summary>
 
-        <div className="import-controls">
-          <label htmlFor="ibercaja-file">Ibercaja XLSX</label>
-          <input
-            id="ibercaja-file"
-            type="file"
-            accept=".xlsx"
-            onChange={(event) => {
-              setSelectedFile(event.target.files?.[0] ?? null)
-              setImportMessage(null)
-            }}
-          />
-          <button
-            type="submit"
-            disabled={selectedFile === null || isImporting}
-          >
-            {isImporting ? 'Importing...' : 'Import'}
-          </button>
-        </div>
-      </form>
+        <form onSubmit={handleIbercajaImport}>
+          <p>Upload an Ibercaja XLSX export for the selected account.</p>
 
-      {importMessage && <p role="status">{importMessage}</p>}
+          <div className="import-controls">
+            <label htmlFor="ibercaja-file">Ibercaja XLSX</label>
+            <input
+              id="ibercaja-file"
+              type="file"
+              accept=".xlsx"
+              onChange={(event) => {
+                setSelectedFile(event.target.files?.[0] ?? null)
+                setImportMessage(null)
+              }}
+            />
+            <button
+              type="submit"
+              disabled={selectedFile === null || isImporting}
+            >
+              {isImporting ? 'Importing...' : 'Import'}
+            </button>
+          </div>
+        </form>
+      </details>
+
+      {importMessage && (
+        <p
+          className={`notice notice-${importMessage.tone}`}
+          role={importMessage.tone === 'error' ? 'alert' : 'status'}
+        >
+          {importMessage.text}
+        </p>
+      )}
       {content}
     </>
   )

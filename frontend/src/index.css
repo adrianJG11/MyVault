@@ -48,11 +48,20 @@ h1 {
   color: #94a3b8;
 }
 
+.app-toolbar {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1.5rem;
+  margin-bottom: 1.5rem;
+  border-bottom: 1px solid #334155;
+}
+
 .account-selector {
   display: grid;
   gap: 0.4rem;
   max-width: 22rem;
-  margin-bottom: 1.5rem;
+  margin-bottom: 0.75rem;
 }
 
 .account-selector label {
@@ -71,8 +80,8 @@ h1 {
 .tabs {
   display: flex;
   gap: 0.5rem;
-  margin-bottom: 1.5rem;
-  border-bottom: 1px solid #334155;
+  margin-bottom: 0;
+  border-bottom: 0;
 }
 
 .tabs button {
@@ -88,6 +97,43 @@ h1 {
 .tabs button.active {
   color: #e5e7eb;
   border-bottom-color: #38bdf8;
+}
+
+.notice {
+  margin: 1rem 0;
+  padding: 0.75rem 1rem;
+  border: 1px solid;
+  border-radius: 0.5rem;
+}
+
+.notice-info {
+  border-color: #0369a1;
+  color: #bae6fd;
+  background: #082f49;
+}
+
+.notice-success {
+  border-color: #15803d;
+  color: #bbf7d0;
+  background: #052e16;
+}
+
+.notice-error {
+  border-color: #b91c1c;
+  color: #fecaca;
+  background: #450a0a;
+}
+
+@media (max-width: 700px) {
+  .app-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .account-selector {
+    max-width: none;
+  }
 }
 
 .filter-panel {
@@ -152,12 +198,17 @@ h1 {
   background: #111827;
 }
 
-.import-panel h2 {
-  margin: 0;
+.import-panel summary {
+  cursor: pointer;
   font-size: 1.1rem;
+  font-weight: 600;
 }
 
-.import-panel > p {
+.import-panel[open] summary {
+  margin-bottom: 0.75rem;
+}
+
+.import-panel form > p {
   margin: 0.4rem 0 1rem;
   color: #94a3b8;
 }
@@ -210,20 +261,65 @@ h1 {
   background: #111827;
 }
 
+.summary-card > span {
+  color: #94a3b8;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .summary-card strong {
-  font-size: 1.5rem;
+  font-size: 1.3rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.summary-card-highlight {
+  border-color: #0284c7;
+  background: linear-gradient(135deg, #0c4a6e 0%, #111827 70%);
+}
+
+.summary-card-highlight > span {
+  color: #bae6fd;
+}
+
+.summary-card-highlight strong {
+  font-size: 1.65rem;
 }
 
 .investment-performance {
   margin: 1.5rem 0 2rem;
 }
 
-.investment-performance > p {
-  color: #cbd5e1;
+.section-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.section-header h2 {
+  margin: 0;
+}
+
+.section-header p:not(.section-eyebrow) {
+  max-width: 42rem;
+  margin: 0.4rem 0 0;
+  color: #94a3b8;
+}
+
+.section-eyebrow {
+  margin: 0 0 0.35rem;
+  color: #38bdf8;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .investment-actions {
-  margin: 1rem 0;
+  flex: 0 0 auto;
 }
 
 .investment-actions button {
@@ -240,8 +336,58 @@ h1 {
   cursor: wait;
 }
 
+@media (max-width: 700px) {
+  .section-header {
+    flex-direction: column;
+  }
+
+  .investment-actions,
+  .investment-actions button {
+    width: 100%;
+  }
+}
+
 .currency-performance {
   margin-bottom: 2rem;
+}
+
+.allocation-chart {
+  margin-top: 1.25rem;
+  padding: 1rem;
+  border: 1px solid #334155;
+  border-radius: 0.75rem;
+  background: #111827;
+}
+
+.allocation-chart h4 {
+  margin: 0 0 1rem;
+}
+
+.allocation-position + .allocation-position {
+  margin-top: 0.9rem;
+}
+
+.allocation-label {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.35rem;
+  color: #cbd5e1;
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.allocation-track {
+  overflow: hidden;
+  height: 0.55rem;
+  border-radius: 999px;
+  background: #1e293b;
+}
+
+.allocation-bar {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #0284c7, #38bdf8);
 }
 
 .positions-header {

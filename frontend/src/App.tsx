@@ -40,51 +40,61 @@ function App() {
         </p>
       </header>
 
-      {isLoading && <p>Loading accounts...</p>}
-      {error && <p role="alert">{error}</p>}
+      {isLoading && <p className="notice notice-info">Loading accounts...</p>}
+      {error && (
+        <p className="notice notice-error" role="alert">
+          {error}
+        </p>
+      )}
 
       {!isLoading && !error && accounts.length === 0 && (
-        <p>Create an account through the API before importing data.</p>
+        <p className="notice notice-info">
+          Create an account through the API before importing data.
+        </p>
       )}
 
       {accounts.length > 0 && selectedAccountId !== null && (
         <>
-          <div className="account-selector">
-            <label htmlFor="account">Account</label>
+          <div className="app-toolbar">
+            <div className="account-selector">
+              <label htmlFor="account">Account</label>
 
-            <select
-              id="account"
-              value={selectedAccountId}
-              onChange={(event) =>
-                setSelectedAccountId(Number(event.target.value))
-              }
-            >
-              {accounts.map((account) => (
-                <option key={account.id} value={account.id}>
-                  {account.name} — {account.bank_name}
-                </option>
-              ))}
-            </select>
+              <select
+                id="account"
+                value={selectedAccountId}
+                onChange={(event) =>
+                  setSelectedAccountId(Number(event.target.value))
+                }
+              >
+                {accounts.map((account) => (
+                  <option key={account.id} value={account.id}>
+                    {account.name} — {account.bank_name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <nav className="tabs" aria-label="Finance sections">
+              <button
+                type="button"
+                className={activeTab === 'transactions' ? 'active' : undefined}
+                aria-current={
+                  activeTab === 'transactions' ? 'page' : undefined
+                }
+                onClick={() => setActiveTab('transactions')}
+              >
+                Transactions
+              </button>
+              <button
+                type="button"
+                className={activeTab === 'investments' ? 'active' : undefined}
+                aria-current={activeTab === 'investments' ? 'page' : undefined}
+                onClick={() => setActiveTab('investments')}
+              >
+                Investments
+              </button>
+            </nav>
           </div>
-
-          <nav className="tabs" aria-label="Finance sections">
-            <button
-              type="button"
-              className={activeTab === 'transactions' ? 'active' : undefined}
-              aria-current={activeTab === 'transactions' ? 'page' : undefined}
-              onClick={() => setActiveTab('transactions')}
-            >
-              Transactions
-            </button>
-            <button
-              type="button"
-              className={activeTab === 'investments' ? 'active' : undefined}
-              aria-current={activeTab === 'investments' ? 'page' : undefined}
-              onClick={() => setActiveTab('investments')}
-            >
-              Investments
-            </button>
-          </nav>
 
           <div hidden={activeTab !== 'transactions'}>
             <TransactionsPanel
