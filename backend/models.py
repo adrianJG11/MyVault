@@ -16,6 +16,8 @@ class Account(Base):
     name: Mapped[str] = mapped_column(String(100))
     bank_name: Mapped[str] = mapped_column(String(100))
     currency: Mapped[str] = mapped_column(String(3))
+    current_balance: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
+    balance_date: Mapped[date | None] = mapped_column()
 
 
 class Transaction(Base):

@@ -141,6 +141,14 @@ def import_ibercaja_transactions(
             detail="Invalid Ibercaja workbook",
         ) from error
 
+    if parsed_transactions:
+        latest_transaction = parsed_transactions[0]
+        latest_date = latest_transaction["operation_date"]
+
+        if account.balance_date is None or latest_date >= account.balance_date:
+            account.current_balance = latest_transaction["balance_after"]
+            account.balance_date = latest_date
+
     parsed_fingerprints = {
         transaction_data["import_fingerprint"]
         for transaction_data in parsed_transactions

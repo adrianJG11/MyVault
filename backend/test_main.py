@@ -17,7 +17,10 @@ from models import Account, InvestmentActivity, InvestmentPrice, Transaction
 client = TestClient(app)
 
 
-def _create_fake_ibercaja_xlsx() -> bytes:
+def _create_fake_ibercaja_xlsx(
+    operation_date: str = "17-08-2026",
+    balance: float = 14897.84,
+) -> bytes:
     workbook = Workbook()
     sheet = workbook.active
 
@@ -36,13 +39,13 @@ def _create_fake_ibercaja_xlsx() -> bytes:
 
     fake_row = [
         1,
-        "17-08-2026",
-        "17-08-2026",
+        operation_date,
+        operation_date,
         "CARD",
         "MERCADONA CÑ DIEGO",
         "FAKE123",
         -42.64,
-        14897.84,
+        balance,
     ]
     for column, value in enumerate(fake_row, start=1):
         sheet.cell(row=7, column=column, value=value)
@@ -101,6 +104,8 @@ def test_create_account_returns_account(clean_database: None) -> None:
     assert response_data["id"] > 0
     assert response_data == {
         "id": response_data["id"],
+        "current_balance": None,
+        "balance_date": None,
         **account_data,
     }
 
@@ -606,7 +611,9 @@ def test_list_transactions_rejects_reversed_amount_range(
     }
 
 
-def test_import_ibercaja_xlsx_stores_transaction(clean_database: None) -> None:
+def test_import_ibercaja_xlsx_stores_transaction_and_updates_balance(
+    clean_database: None,
+) -> None:
     create_response = client.post(
         "/accounts",
         json={
@@ -643,6 +650,56 @@ def test_import_ibercaja_xlsx_stores_transaction(clean_database: None) -> None:
     assert transactions[0]["account_id"] == account_id
     assert transactions[0]["description"] == "MERCADONA CÑ DIEGO"
     assert transactions[0]["category"] == "food"
+
+    accounts_response = client.get("/accounts")
+
+    assert accounts_response.status_code == 200
+
+    account = accounts_response.json()[0]
+    assert account["current_balance"] == "14897.84"
+    assert account["balance_date"] == "2026-08-17"
+
+
+def test_import_older_transaction_does_not_replace_latest_balance(
+    clean_database: None,
+) -> None:
+    create_response = client.post(
+        "/accounts",
+        json={
+            "name": "Main account",
+            "bank_name": "Ibercaja",
+            "currency": "EUR",
+        },
+    )
+
+    assert create_response.status_code == 201
+
+    account_id = create_response.json()["id"]
+    newer_workbook = _create_fake_ibercaja_xlsx("17-08-2026", 1000.00)
+    older_workbook = _create_fake_ibercaja_xlsx("10-08-2026", 900.00)
+
+    for workbook_contents in (newer_workbook, older_workbook):
+        import_response = client.post(
+            f"/accounts/{account_id}/imports/ibercaja",
+            files={
+                "file": (
+                    "ibercaja.xlsx",
+                    workbook_contents,
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                )
+            },
+        )
+
+        assert import_response.status_code == 201
+        assert import_response.json() == {"imported": 1}
+
+    accounts_response = client.get("/accounts")
+
+    assert accounts_response.status_code == 200
+
+    account = accounts_response.json()[0]
+    assert account["current_balance"] == "1000.00"
+    assert account["balance_date"] == "2026-08-17"
 
 
 def test_import_ibercaja_xlsx_skips_duplicate_transaction(

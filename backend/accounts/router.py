@@ -1,3 +1,5 @@
+from datetime import date
+from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, status
@@ -21,6 +23,8 @@ class AccountRead(AccountCreate):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    current_balance: Decimal | None
+    balance_date: date | None
 
 
 @router.post("", response_model=AccountRead, status_code=status.HTTP_201_CREATED)
