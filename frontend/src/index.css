@@ -77,6 +77,24 @@ h1 {
   background: #111827;
 }
 
+.account-balance {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 0.6rem;
+}
+
+.account-balance span,
+.account-balance small {
+  color: #94a3b8;
+  font-size: 0.8rem;
+}
+
+.account-balance strong {
+  font-size: 1.1rem;
+  font-variant-numeric: tabular-nums;
+}
+
 .tabs {
   display: flex;
   gap: 0.5rem;

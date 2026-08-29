@@ -3,4 +3,6 @@ export type Account = {
   name: string
   bank_name: string
   currency: string
+  current_balance: string | null
+  balance_date: string | null
 }

@@ -7,12 +7,32 @@ import { TransactionsPanel } from './features/transactions/TransactionsPanel'
 
 type ActiveTab = 'transactions' | 'investments'
 
+function formatMoney(value: string, currency: string) {
+  return new Intl.NumberFormat('es-ES', {
+    style: 'currency',
+    currency,
+  }).format(Number(value))
+}
+
+function formatDate(value: string) {
+  return new Intl.DateTimeFormat('en-GB', {
+    dateStyle: 'medium',
+  }).format(new Date(`${value}T00:00:00`))
+}
+
 function App() {
   const [accounts, setAccounts] = useState<Account[]>([])
   const [selectedAccountId, setSelectedAccountId] = useState<number | null>(null)
   const [activeTab, setActiveTab] = useState<ActiveTab>('transactions')
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const selectedAccount =
+    accounts.find((account) => account.id === selectedAccountId) ?? null
+
+  async function refreshAccounts() {
+    const refreshedAccounts = await fetchAccounts()
+    setAccounts(refreshedAccounts)
+  }
 
   useEffect(() => {
     async function loadAccounts() {
@@ -53,7 +73,7 @@ function App() {
         </p>
       )}
 
-      {accounts.length > 0 && selectedAccountId !== null && (
+      {selectedAccount !== null && (
         <>
           <div className="app-toolbar">
             <div className="account-selector">
@@ -61,7 +81,7 @@ function App() {
 
               <select
                 id="account"
-                value={selectedAccountId}
+                value={selectedAccount.id}
                 onChange={(event) =>
                   setSelectedAccountId(Number(event.target.value))
                 }
@@ -72,6 +92,23 @@ function App() {
                   </option>
                 ))}
               </select>
+
+              <div className="account-balance">
+                <span>Current balance</span>
+                <strong>
+                  {selectedAccount.current_balance === null
+                    ? 'Not available'
+                    : formatMoney(
+                        selectedAccount.current_balance,
+                        selectedAccount.currency,
+                      )}
+                </strong>
+                {selectedAccount.balance_date !== null && (
+                  <small>
+                    As of {formatDate(selectedAccount.balance_date)}
+                  </small>
+                )}
+              </div>
             </div>
 
             <nav className="tabs" aria-label="Finance sections">
@@ -98,14 +135,15 @@ function App() {
 
           <div hidden={activeTab !== 'transactions'}>
             <TransactionsPanel
-              key={`transactions-${selectedAccountId}`}
-              accountId={selectedAccountId}
+              key={`transactions-${selectedAccount.id}`}
+              accountId={selectedAccount.id}
+              onImportComplete={refreshAccounts}
             />
           </div>
           <div hidden={activeTab !== 'investments'}>
             <InvestmentsPanel
-              key={`investments-${selectedAccountId}`}
-              accountId={selectedAccountId}
+              key={`investments-${selectedAccount.id}`}
+              accountId={selectedAccount.id}
             />
           </div>
         </>

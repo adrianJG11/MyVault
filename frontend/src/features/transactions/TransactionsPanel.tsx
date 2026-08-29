@@ -27,9 +27,13 @@ function formatCategory(category: string) {
 
 type TransactionsPanelProps = {
   accountId: number
+  onImportComplete: () => Promise<void>
 }
 
-export function TransactionsPanel({ accountId }: TransactionsPanelProps) {
+export function TransactionsPanel({
+  accountId,
+  onImportComplete,
+}: TransactionsPanelProps) {
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [error, setError] = useState<string | null>(null)
   const [categoryError, setCategoryError] = useState<string | null>(null)
@@ -179,6 +183,7 @@ export function TransactionsPanel({ accountId }: TransactionsPanelProps) {
         categoryFilter,
         descriptionFilter,
       )
+      await onImportComplete()
 
       setTransactions(refreshedTransactions)
       setCurrentPage(1)
