@@ -55,6 +55,9 @@ The `.env` file is ignored by Git. Never commit it or put its values in the
 Dockerfile. Copy `.env.example` when setting up a new local installation, but
 keep the real values only in `.env`.
 
+Compose does not load `.env.example` automatically. Missing or empty PostgreSQL
+settings stop startup with an error pointing to `.env`.
+
 ## First setup
 
 Start PostgreSQL:
