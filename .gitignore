@@ -13,6 +13,8 @@ wheels/
 # Private financial exports
 *.csv
 *.xlsx
+ibkr_report.xml
+.ibkr-report-*
 
 # Editor-specific files
 .vscode/

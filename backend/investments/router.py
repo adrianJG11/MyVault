@@ -6,16 +6,22 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.exc import DataError
 from sqlalchemy.orm import Session
 
 from database import get_session
 from investments.calculations import calculate_investment_summary
+from investments.ibkr_parser import parse_ibkr_xml
 from investments.market_prices import (
     MarketPriceError,
     eodhd_symbol_for,
     fetch_eodhd_prices,
 )
-from investments.revolut_importer import parse_revolut_investment_csv
+from investments.revolut_importer import (
+    ParsedInvestmentActivity,
+    parse_revolut_investment_csv,
+)
 from models import Account, InvestmentActivity, InvestmentPrice
 from schemas import ImportResult
 
@@ -351,34 +357,64 @@ def import_revolut_investment_activities(
             detail="Invalid Revolut investment CSV",
         ) from error
 
-    parsed_fingerprints = {
-        activity_data["import_fingerprint"] for activity_data in parsed_activities
-    }
-    existing_fingerprints = set(
-        session.scalars(
-            select(InvestmentActivity.import_fingerprint).where(
-                InvestmentActivity.account_id == account_id,
-                InvestmentActivity.import_fingerprint.in_(parsed_fingerprints),
-            )
-        ).all()
-    )
+    return _store_investment_activities(session, account_id, parsed_activities)
 
-    imported = 0
 
-    for activity_data in parsed_activities:
-        fingerprint = activity_data["import_fingerprint"]
+@router.post(
+    "/accounts/{account_id}/imports/ibkr-investments",
+    response_model=ImportResult,
+    status_code=status.HTTP_201_CREATED,
+)
+def import_ibkr_investment_activities(
+    account_id: int,
+    file: UploadFile,
+    session: Annotated[Session, Depends(get_session)],
+) -> ImportResult:
+    account = session.get(Account, account_id)
 
-        if fingerprint in existing_fingerprints:
-            continue
-
-        activity = InvestmentActivity(
-            account_id=account_id,
-            **activity_data,
+    if account is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Account not found",
         )
-        session.add(activity)
-        existing_fingerprints.add(fingerprint)
-        imported += 1
+    try:
+        parsed_ibkr = parse_ibkr_xml(file.file)
+    except ValueError as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Invalid IBKR report",
+        ) from error
 
-    session.commit()
+    return _store_investment_activities(session, account_id, parsed_ibkr)
 
+
+def _store_investment_activities(
+    session: Session,
+    account_id: int,
+    parsed_activities: list[ParsedInvestmentActivity],
+) -> ImportResult:
+    imported = 0
+    try:
+        for start in range(0, len(parsed_activities), 500):
+            statement = (
+                insert(InvestmentActivity)
+                .values(
+                    [
+                        {"account_id": account_id, **activity}
+                        for activity in parsed_activities[start : start + 500]
+                    ]
+                )
+                .on_conflict_do_nothing(
+                    index_elements=["account_id", "import_fingerprint"]
+                )
+                .returning(InvestmentActivity.id)
+            )
+            imported += len(session.scalars(statement).all())
+        session.commit()
+    except DataError as error:
+        session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Investment values cannot be stored",
+        ) from error
     return ImportResult(imported=imported)

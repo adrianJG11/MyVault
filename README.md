@@ -25,6 +25,8 @@ What works now:
 - search, filter, categorize, and paginate transactions in the web interface;
 - import duplicate-safe Revolut investment activity from CSV and inspect it in
   a separate Investments tab;
+- import IBKR stock and ETF executions from XML through the API, with duplicate
+  detection, and download reports using the optional Flex Web Service script;
 - calculate FIFO positions, realized results, dividends, and unrealized results
   from on-demand USD market prices or manually entered fallback prices;
 - run the frontend, API, and database with Docker Compose;
@@ -54,6 +56,9 @@ EODHD_API_KEY=replace-with-your-private-api-key
 The `.env` file is ignored by Git. Never commit it or put its values in the
 Dockerfile. Copy `.env.example` when setting up a new local installation, but
 keep the real values only in `.env`.
+
+Compose does not load `.env.example` automatically. Missing or empty PostgreSQL
+settings stop startup with an error pointing to `.env`.
 
 ## First setup
 
@@ -142,6 +147,54 @@ The API remains available for inspection and supports these optional filters on
 - `description`;
 - `amount_min` and `amount_max`;
 - `category`, using `uncategorized` to select transactions without a category.
+
+## IBKR investment imports
+
+Create a dedicated IBKR account with `POST /accounts`. Configure an Activity
+Flex Query in XML format with Trades at the Executions level and these fields:
+`accountId`, `assetCategory`, `buySell`, `conid`, `currency`, `dateTime`,
+`fxRateToBase`, `ibCommission`, `ibCommissionCurrency`, `netCash`, `quantity`,
+`symbol`, `tradeID`, and `tradePrice`.
+
+Upload a manually exported report through
+`POST /accounts/{account_id}/imports/ibkr-investments` in
+<http://127.0.0.1:8000/docs>. For example, from the repository root, replacing
+`ACCOUNT_ID` with your local IBKR account's ID:
+
+```bash
+curl --fail-with-body \
+  -F 'file=@ibkr_report.xml;type=application/xml' \
+  http://127.0.0.1:8000/accounts/ACCOUNT_ID/imports/ibkr-investments
+```
+
+The response reports the number of new activities. Re-importing the same trades
+into the same local account returns `{"imported": 0}`. Inspect imported records
+with `GET /investment-activities?account_id=ACCOUNT_ID` and FIFO results with
+`GET /investment-summary?account_id=ACCOUNT_ID`.
+
+Imports accept stock and ETF executions marked `STK`, one broker account per
+report, and XML up to 10 MB. Trades are identified by broker account and trade
+ID. Quantities are normalized to positive values; net cash already includes
+fees. Execution times are interpreted as Eastern time and stored in UTC. FX
+rates are retained, but summaries stay separate by trade currency. Import the
+purchase history needed to calculate subsequent sales; short positions,
+derivatives, dividends, corporate actions, and cash movements are not supported
+by this IBKR importer.
+
+To download XML using the Flex Web Service, set `IBKR_FLEX_TOKEN` and
+`IBKR_FLEX_QUERY_ID` in your private root `.env`, then run from the repository
+root:
+
+```bash
+uv --directory backend run --env-file ../.env python -m investments.ibkr_importer
+```
+
+The downloader waits for generation, retries transient errors a limited number
+of times, and validates the report before replacing `backend/ibkr_report.xml`.
+The saved file has permissions `0600`. A failed download preserves the previous
+file. To import this downloaded report with curl, use
+`file=@backend/ibkr_report.xml;type=application/xml`. The frontend's upload
+control currently accepts Revolut CSV; IBKR imports use the API.
 
 ## Database migrations
 
@@ -247,7 +300,7 @@ it is not permission to build future architecture in advance.
 
 ### V0.4 — Investment expansion (provisional)
 
-- add an IBKR importer after inspecting a real IBKR export;
+- expand IBKR imports beyond stock and ETF executions when real reports require it;
 - combine investment positions across Revolut and IBKR accounts;
 - show portfolio allocation;
 - verify FX semantics before combining EUR and USD results.
