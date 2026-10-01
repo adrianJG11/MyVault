@@ -4,6 +4,7 @@ from xml.etree import ElementTree
 
 import pytest
 
+from investments import ibkr_parser
 from investments.ibkr_parser import parse_ibkr_xml
 
 
@@ -80,6 +81,109 @@ def test_rejects_incorrect_trade_quantity(
 
     with pytest.raises(ValueError, match=message):
         parse_ibkr_xml(source)
+
+
+def _report_with_trades(*overrides: dict[str, str]) -> bytes:
+    root = ElementTree.Element("FlexQueryResponse")
+    for changes in overrides:
+        attributes = {
+            "accountId": "TEST_ACCOUNT",
+            "tradeID": "123",
+            "assetCategory": "STK",
+            "quantity": "1",
+            "tradePrice": "10",
+            "fxRateToBase": "1",
+            "buySell": "BUY",
+            "netCash": "-11",
+            "dateTime": "20260929;120000",
+            "symbol": "TEST",
+            "currency": "USD",
+        }
+        ElementTree.SubElement(root, "Trade", attributes | changes)
+    return ElementTree.tostring(root)
+
+
+def test_same_report_produces_stable_fingerprints() -> None:
+    report = _report_with_trades({})
+    assert parse_ibkr_xml(BytesIO(report)) == parse_ibkr_xml(BytesIO(report))
+
+
+def test_distinct_identical_executions_have_distinct_fingerprints() -> None:
+    activities = parse_ibkr_xml(BytesIO(_report_with_trades({}, {"tradeID": "124"})))
+    assert activities[0]["import_fingerprint"] != activities[1]["import_fingerprint"]
+
+
+@pytest.mark.parametrize("field", ["accountId", "tradeID"])
+def test_rejects_missing_trade_identity(field: str) -> None:
+    with pytest.raises(ValueError, match="Missing IBKR trade identity"):
+        parse_ibkr_xml(BytesIO(_report_with_trades({field: " "})))
+
+
+def test_rejects_reports_combining_broker_accounts() -> None:
+    report = _report_with_trades({}, {"accountId": "OTHER_ACCOUNT", "tradeID": "124"})
+    with pytest.raises(ValueError, match="Expected one IBKR account"):
+        parse_ibkr_xml(BytesIO(report))
+
+
+@pytest.mark.parametrize("encoding", ["utf-8", "utf-16"])
+def test_rejects_xml_document_types(encoding: str) -> None:
+    report = '<!DOCTYPE FlexQueryResponse [<!ENTITY value "TEST">]><FlexQueryResponse/>'
+    with pytest.raises(ValueError, match="document type"):
+        parse_ibkr_xml(BytesIO(report.encode(encoding)))
+
+
+def test_rejects_oversized_reports(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(ibkr_parser, "MAX_IBKR_REPORT_BYTES", 64)
+    with pytest.raises(ValueError, match="exceeds 10 MB"):
+        parse_ibkr_xml(BytesIO(b" " * 65))
+
+
+def test_sale_preserves_negative_proceeds_after_fees() -> None:
+    report = _report_with_trades({"buySell": "SELL", "quantity": "-1", "netCash": "-1"})
+    assert parse_ibkr_xml(BytesIO(report))[0]["total_amount"] == Decimal(-1)
+
+
+def test_rejects_unknown_xml_encoding() -> None:
+    report = b'<?xml version="1.0" encoding="UNKNOWN"?><FlexQueryResponse/>'
+    with pytest.raises(ValueError, match="Invalid IBKR report"):
+        parse_ibkr_xml(BytesIO(report))
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"netCash": "-1e1000000"},
+        {"buySell": "SELL", "quantity": "-1e1000000"},
+    ],
+)
+def test_decimal_overflow_raises_value_error(changes: dict[str, str]) -> None:
+    with pytest.raises(ValueError, match="Invalid IBKR report"):
+        parse_ibkr_xml(BytesIO(_report_with_trades(changes)))
+
+
+@pytest.mark.parametrize(
+    "report",
+    [
+        pytest.param(b"<FlexQueryResponse>", id="malformed_xml"),
+        pytest.param(
+            b'<FlexQueryResponse><Trade accountId="TEST_ACCOUNT" tradeID="123" '
+            b'assetCategory="STK" tradePrice="10" fxRateToBase="1" '
+            b'buySell="BUY" netCash="-11" dateTime="20260929;120000" '
+            b'symbol="TEST" currency="USD" /></FlexQueryResponse>',
+            id="missing_quantity",
+        ),
+        pytest.param(
+            b'<FlexQueryResponse><Trade accountId="TEST_ACCOUNT" tradeID="123" '
+            b'assetCategory="STK" quantity="abc" tradePrice="10" fxRateToBase="1" '
+            b'buySell="BUY" netCash="-11" dateTime="20260929;120000" '
+            b'symbol="TEST" currency="USD" /></FlexQueryResponse>',
+            id="non_numeric_quantity",
+        ),
+    ],
+)
+def test_invalid_report_input_raises_value_error(report: bytes) -> None:
+    with pytest.raises(ValueError, match="Invalid IBKR report"):
+        parse_ibkr_xml(BytesIO(report))
 
 
 @pytest.mark.parametrize("category", ["OPT", "FUT", "CASH", "", None])
