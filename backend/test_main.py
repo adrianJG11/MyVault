@@ -2,6 +2,7 @@ from collections.abc import Iterator
 from datetime import date
 from decimal import Decimal
 from io import BytesIO
+from xml.etree import ElementTree
 
 import pytest
 from fastapi.testclient import TestClient
@@ -62,6 +63,56 @@ def _create_fake_revolut_investment_csv() -> bytes:
         b"2026-01-10T12:30:00Z,FAKE,BUY - MARKET,0.5,USD 100,USD 50,USD,1.2\n"
         b"2026-02-01T09:00:00Z,FAKE,DIVIDEND,,,USD 0.25,USD,1.1\n"
     )
+
+
+def _create_fake_ibkr_xml() -> bytes:
+    root = ElementTree.Element("FlexQueryResponse")
+    statement = ElementTree.SubElement(root, "FlexStatement", accountId="TEST_ACCOUNT")
+    trades = ElementTree.SubElement(statement, "Trades")
+    common = {
+        "accountId": "TEST_ACCOUNT",
+        "assetCategory": "STK",
+        "symbol": "FAKE",
+        "currency": "USD",
+        "fxRateToBase": "0.9",
+    }
+    ElementTree.SubElement(
+        trades,
+        "Trade",
+        common
+        | {
+            "tradeID": "BUY123",
+            "buySell": "BUY",
+            "quantity": "2",
+            "tradePrice": "10",
+            "netCash": "-21",
+            "dateTime": "20260110;123000",
+        },
+    )
+    ElementTree.SubElement(
+        trades,
+        "Trade",
+        common
+        | {
+            "tradeID": "SELL123",
+            "buySell": "SELL",
+            "quantity": "-1",
+            "tradePrice": "12",
+            "netCash": "11",
+            "dateTime": "20260201;090000",
+        },
+    )
+    return ElementTree.tostring(root)
+
+
+@pytest.fixture
+def ibkr_account(clean_database: None) -> int:
+    response = client.post(
+        "/accounts",
+        json={"name": "Investments", "bank_name": "IBKR", "currency": "EUR"},
+    )
+    assert response.status_code == 201
+    return response.json()["id"]
 
 
 @pytest.fixture
@@ -935,6 +986,149 @@ def test_import_revolut_investments_rejects_unknown_account(
         files={"file": ("investments.csv", b"not parsed", "text/csv")},
     )
 
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Account not found"}
+
+
+def test_import_ibkr_stores_lists_and_calculates_activities(ibkr_account: int) -> None:
+    response = client.post(
+        f"/accounts/{ibkr_account}/imports/ibkr-investments",
+        files={"file": ("report.xml", _create_fake_ibkr_xml(), "application/xml")},
+    )
+    assert response.status_code == 201
+    assert response.json() == {"imported": 2}
+
+    activities = client.get(
+        "/investment-activities", params={"account_id": ibkr_account}
+    ).json()
+    assert len(activities) == 2
+    assert activities[0]["activity_type"] == "SELL - MARKET"
+    assert Decimal(activities[0]["quantity"]) == Decimal(1)
+    assert Decimal(activities[0]["total_amount"]) == Decimal(11)
+    assert Decimal(activities[0]["fx_rate"]) == Decimal("0.9")
+    assert activities[1]["occurred_at"] == "2026-01-10T17:30:00Z"
+    assert Decimal(activities[1]["total_amount"]) == Decimal(21)
+
+    summary = client.get("/investment-summary", params={"account_id": ibkr_account})
+    assert summary.status_code == 200
+    position = summary.json()["positions"][0]
+    assert Decimal(position["quantity"]) == Decimal(1)
+    assert Decimal(position["remaining_cost"]) == Decimal("10.5")
+    assert Decimal(position["realized_pl"]) == Decimal("0.5")
+
+
+def test_import_ibkr_skips_duplicates_in_file_and_repeat_uploads(
+    ibkr_account: int,
+) -> None:
+    root = ElementTree.fromstring(_create_fake_ibkr_xml())
+    trades = root.find(".//Trades")
+    assert trades is not None
+    trades.extend(list(trades))
+    files = {"file": ("report.xml", ElementTree.tostring(root), "application/xml")}
+
+    first = client.post(
+        f"/accounts/{ibkr_account}/imports/ibkr-investments", files=files
+    )
+    second = client.post(
+        f"/accounts/{ibkr_account}/imports/ibkr-investments", files=files
+    )
+
+    assert first.status_code == second.status_code == 201
+    assert first.json() == {"imported": 2}
+    assert second.json() == {"imported": 0}
+    assert (
+        len(
+            client.get(
+                "/investment-activities", params={"account_id": ibkr_account}
+            ).json()
+        )
+        == 2
+    )
+
+
+def test_import_ibkr_does_not_merge_distinct_identical_executions(
+    ibkr_account: int,
+) -> None:
+    root = ElementTree.fromstring(_create_fake_ibkr_xml())
+    trades = root.find(".//Trades")
+    assert trades is not None
+    duplicate = ElementTree.fromstring(ElementTree.tostring(trades[0]))
+    duplicate.attrib["tradeID"] = "BUY124"
+    trades.append(duplicate)
+
+    response = client.post(
+        f"/accounts/{ibkr_account}/imports/ibkr-investments",
+        files={"file": ("report.xml", ElementTree.tostring(root), "application/xml")},
+    )
+    assert response.status_code == 201
+    assert response.json() == {"imported": 3}
+
+
+def test_import_ibkr_rejects_invalid_trade_without_partial_import(
+    ibkr_account: int,
+) -> None:
+    root = ElementTree.fromstring(_create_fake_ibkr_xml())
+    list(root.iter("Trade"))[1].attrib["quantity"] = "abc"
+
+    response = client.post(
+        f"/accounts/{ibkr_account}/imports/ibkr-investments",
+        files={"file": ("report.xml", ElementTree.tostring(root), "application/xml")},
+    )
+    assert response.status_code == 422
+    assert response.json() == {"detail": "Invalid IBKR report"}
+    assert (
+        client.get("/investment-activities", params={"account_id": ibkr_account}).json()
+        == []
+    )
+
+
+def test_import_ibkr_rolls_back_earlier_batches_on_numeric_overflow(
+    ibkr_account: int,
+) -> None:
+    original = next(ElementTree.fromstring(_create_fake_ibkr_xml()).iter("Trade"))
+    root = ElementTree.Element("FlexQueryResponse")
+    for index in range(501):
+        attributes = original.attrib | {"tradeID": f"BUY{index}"}
+        if index == 500:
+            attributes["quantity"] = "1e40"
+        ElementTree.SubElement(root, "Trade", attributes)
+
+    response = client.post(
+        f"/accounts/{ibkr_account}/imports/ibkr-investments",
+        files={"file": ("report.xml", ElementTree.tostring(root), "application/xml")},
+    )
+    assert response.status_code == 422
+    assert response.json() == {"detail": "Investment values cannot be stored"}
+    assert (
+        client.get("/investment-activities", params={"account_id": ibkr_account}).json()
+        == []
+    )
+
+
+@pytest.mark.parametrize("report", [b"not XML", b"<WrongRoot/>"])
+def test_import_ibkr_rejects_invalid_xml(ibkr_account: int, report: bytes) -> None:
+    response = client.post(
+        f"/accounts/{ibkr_account}/imports/ibkr-investments",
+        files={"file": ("report.xml", report, "application/xml")},
+    )
+    assert response.status_code == 422
+    assert response.json() == {"detail": "Invalid IBKR report"}
+
+
+def test_import_ibkr_accepts_empty_report(ibkr_account: int) -> None:
+    response = client.post(
+        f"/accounts/{ibkr_account}/imports/ibkr-investments",
+        files={"file": ("report.xml", b"<FlexQueryResponse/>", "application/xml")},
+    )
+    assert response.status_code == 201
+    assert response.json() == {"imported": 0}
+
+
+def test_import_ibkr_rejects_unknown_account(clean_database: None) -> None:
+    response = client.post(
+        "/accounts/999999/imports/ibkr-investments",
+        files={"file": ("report.xml", _create_fake_ibkr_xml(), "application/xml")},
+    )
     assert response.status_code == 404
     assert response.json() == {"detail": "Account not found"}
 
