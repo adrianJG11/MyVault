@@ -108,9 +108,11 @@ export. The transaction list refreshes after the import. Importing the same
 workbook again should report `0` new transactions because duplicate detection
 is performed per account.
 
-The Investments tab accepts Revolut's investment activity CSV export. Select a
-dedicated Revolut account before importing it. The first version preserves
-trades, dividends, cash movements, currencies, and FX rates as reported.
+The Investments tab accepts Revolut investment activity CSV exports and IBKR
+Flex XML reports. Select a dedicated account and the matching broker before
+importing. Revolut imports preserve trades, dividends, cash movements,
+currencies, and FX rates as reported. IBKR imports currently support stock and
+ETF executions; see the IBKR section below for report requirements.
 
 Imported bank transactions receive a category only when an explicit rule
 matches confidently. Categories can be corrected manually from the transaction
@@ -156,6 +158,13 @@ Flex Query in XML format with Trades at the Executions level and these fields:
 `fxRateToBase`, `ibCommission`, `ibCommissionCurrency`, `netCash`, `quantity`,
 `symbol`, `tradeID`, and `tradePrice`.
 
+For closing prices, also enable **Open Positions** at **Summary** level and
+include **Account ID**, **Asset Class**, **Symbol**, **Currency**, **Mark Price**,
+**Report Date**, and **Level of Detail**. In XML these are `accountId`,
+`assetCategory`, `symbol`, `currency`, `markPrice`, `reportDate`, and
+`levelOfDetail`. IBKR's Mark Price is the closing price as of the report date,
+not a live quote. See the [IBKR Open Positions field reference](https://www.ibkrguides.com/reportingreference/reportguide/open%20positionsfq.htm).
+
 Upload a manually exported report through
 `POST /accounts/{account_id}/imports/ibkr-investments` in
 <http://127.0.0.1:8000/docs>. For example, from the repository root, replacing
@@ -167,8 +176,11 @@ curl --fail-with-body \
   http://127.0.0.1:8000/accounts/ACCOUNT_ID/imports/ibkr-investments
 ```
 
-The response reports the number of new activities. Re-importing the same trades
-into the same local account returns `{"imported": 0}`. Inspect imported records
+The response reports new activities and updated closing prices, for example
+`{"imported": 2, "prices_updated": 2}`. Re-importing an unchanged report returns
+`{"imported": 0, "prices_updated": 0}`. A newer report can update prices without
+adding trades. Older or same-date IBKR prices cannot overwrite saved prices;
+recent manual or external price updates are preserved. Inspect imported records
 with `GET /investment-activities?account_id=ACCOUNT_ID` and FIFO results with
 `GET /investment-summary?account_id=ACCOUNT_ID`.
 
@@ -180,6 +192,16 @@ rates are retained, but summaries stay separate by trade currency. Import the
 purchase history needed to calculate subsequent sales; short positions,
 derivatives, dividends, corporate actions, and cash movements are not supported
 by this IBKR importer.
+
+Open Positions supplies prices, not replacement trade history. Each price must
+match an imported ticker and currency in the selected account. Import the full
+purchase and sale history first or include it in the same XML; later reports
+may contain only Open Positions. Trades and prices are saved together, so an
+invalid price or unmatched position leaves the import unchanged. Portfolio
+quantities, cost basis, and P/L remain calculated from the imported trades.
+The frontend shows the price source and IBKR report date next to each saved
+price. SXRV and VWCE can therefore use IBKR closing prices without an external
+quote provider. Dates can be `YYYYMMDD` or `YYYY-MM-DD`.
 
 To download XML using the Flex Web Service, set `IBKR_FLEX_TOKEN` and
 `IBKR_FLEX_QUERY_ID` in your private root `.env`, then run from the repository
@@ -193,8 +215,9 @@ The downloader waits for generation, retries transient errors a limited number
 of times, and validates the report before replacing `backend/ibkr_report.xml`.
 The saved file has permissions `0600`. A failed download preserves the previous
 file. To import this downloaded report with curl, use
-`file=@backend/ibkr_report.xml;type=application/xml`. The frontend's upload
-control currently accepts Revolut CSV; IBKR imports use the API.
+`file=@backend/ibkr_report.xml;type=application/xml`. To import through the
+frontend, select your IBKR account, open the Investments tab, expand
+**Import investment activity**, choose **IBKR XML**, and upload the report.
 
 ## Database migrations
 
