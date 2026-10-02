@@ -17,6 +17,9 @@ export type InvestmentPosition = {
   quantity: string
   remaining_cost: string
   current_price: string | null
+  price_source: string | null
+  price_as_of: string | null
+  price_updated_at: string | null
   market_value: string | null
   unrealized_pl: string | null
   unrealized_return_percent: string | null

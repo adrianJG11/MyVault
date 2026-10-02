@@ -3,7 +3,7 @@ import { type FormEvent, type ReactNode, useEffect, useState } from 'react'
 import {
   fetchInvestmentActivities,
   fetchInvestmentSummary,
-  importRevolutInvestments,
+  importInvestments,
   refreshInvestmentPrices,
   updateInvestmentPrice,
 } from './api'
@@ -15,6 +15,8 @@ const dateTimeFormatter = new Intl.DateTimeFormat('en-GB', {
   dateStyle: 'medium',
   timeStyle: 'short',
 })
+
+const dateFormatter = new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium' })
 
 function formatMoney(value: string, currency: string) {
   return new Intl.NumberFormat('es-ES', {
@@ -80,6 +82,7 @@ export function InvestmentsPanel({ accountId }: InvestmentsPanelProps) {
   })
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [broker, setBroker] = useState<'revolut' | 'ibkr'>('revolut')
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [importMessage, setImportMessage] = useState<{
     text: string
@@ -141,7 +144,7 @@ export function InvestmentsPanel({ accountId }: InvestmentsPanelProps) {
     setPriceMessage(null)
 
     try {
-      const result = await importRevolutInvestments(accountId, file)
+      const result = await importInvestments(accountId, file, broker)
       const data = await fetchInvestmentData(accountId)
 
       setActivities(data.activities)
@@ -149,11 +152,14 @@ export function InvestmentsPanel({ accountId }: InvestmentsPanelProps) {
       setPriceDrafts(priceDraftsFrom(data.summary))
       setCurrentPage(1)
       setImportMessage({
-        text: `Imported ${result.imported} new investment activities.`,
+        text: `Imported ${result.imported} new investment activities.${result.prices_updated !== undefined ? ` Updated ${result.prices_updated} IBKR closing prices.` : ''}`,
         tone: 'success',
       })
       setSelectedFile(null)
-      form.reset()
+      const fileInput = form.querySelector<HTMLInputElement>('input[type="file"]')
+      if (fileInput) {
+        fileInput.value = ''
+      }
     } catch {
       setImportMessage({
         text: 'The investment import or activity refresh failed.',
@@ -212,7 +218,7 @@ export function InvestmentsPanel({ accountId }: InvestmentsPanelProps) {
           ? `Unavailable: ${result.unavailable.join(', ')}.`
           : '',
         result.manual_only.length > 0
-          ? `Manual only: ${result.manual_only.join(', ')}.`
+          ? `No external quote: ${result.manual_only.join(', ')}. Saved report or manual prices were kept.`
           : '',
       ]
         .filter(Boolean)
@@ -507,7 +513,26 @@ export function InvestmentsPanel({ accountId }: InvestmentsPanelProps) {
                   </dl>
 
                   <div className="position-price">
-                    <span>Current price ({position.currency})</span>
+                    <span>
+                      Saved price ({position.currency})
+                      {position.price_source === 'ibkr' && position.price_as_of ? (
+                        <small className="price-date">
+                          IBKR closing price · as of{' '}
+                          {dateFormatter.format(
+                            new Date(`${position.price_as_of}T00:00:00`),
+                          )}
+                        </small>
+                      ) : position.price_updated_at ? (
+                        <small className="price-date">
+                          {position.price_source === 'manual'
+                            ? 'Manual price'
+                            : position.price_source === 'eodhd'
+                              ? 'EODHD closing price'
+                              : 'Saved price'}{' '}
+                          · saved {dateTimeFormatter.format(new Date(position.price_updated_at))}
+                        </small>
+                      ) : null}
+                    </span>
                     {Number(position.quantity) > 0 ? (
                       <form
                         className="price-form"
@@ -520,7 +545,7 @@ export function InvestmentsPanel({ accountId }: InvestmentsPanelProps) {
                           min="0.00000001"
                           step="any"
                           required
-                          aria-label={`Current price for ${position.ticker} in ${position.currency}`}
+                          aria-label={`Saved price for ${position.ticker} in ${position.currency}`}
                           value={priceDrafts[position.ticker] ?? ''}
                           onChange={(event) =>
                             setPriceDrafts((drafts) => ({
@@ -632,16 +657,52 @@ export function InvestmentsPanel({ accountId }: InvestmentsPanelProps) {
         <summary>Import investment activity</summary>
 
         <form onSubmit={handleImport}>
-          <p>Upload a Revolut investment CSV for the selected account.</p>
+          <p>
+            Upload{' '}
+            {broker === 'ibkr'
+              ? 'an IBKR Flex XML report'
+              : 'a Revolut investment CSV'}{' '}
+            for the selected account.
+          </p>
+          {broker === 'ibkr' && (
+            <p>
+              Include Open Positions at Summary level with Account ID, Asset
+              Class, Symbol, Currency, Mark Price, Report Date, and Level of
+              Detail to import closing prices. Include the purchase history for
+              your holdings.
+            </p>
+          )}
 
           <div className="import-controls">
-            <label htmlFor="revolut-investments-file">
-              Revolut investment CSV
+            <label htmlFor="investment-broker">Broker</label>
+            <select
+              id="investment-broker"
+              value={broker}
+              disabled={isImporting}
+              onChange={(event) => {
+                setBroker(event.target.value === 'ibkr' ? 'ibkr' : 'revolut')
+                setSelectedFile(null)
+                setImportMessage(null)
+              }}
+            >
+              <option value="revolut">Revolut CSV</option>
+              <option value="ibkr">IBKR XML</option>
+            </select>
+            <label htmlFor="investment-file">
+              {broker === 'ibkr'
+                ? 'IBKR Flex XML report'
+                : 'Revolut investment CSV'}
             </label>
             <input
-              id="revolut-investments-file"
+              key={broker}
+              id="investment-file"
               type="file"
-              accept=".csv,text/csv"
+              accept={
+                broker === 'ibkr'
+                  ? '.xml,application/xml,text/xml'
+                  : '.csv,text/csv'
+              }
+              disabled={isImporting}
               onChange={(event) => {
                 setSelectedFile(event.target.files?.[0] ?? null)
                 setImportMessage(null)
