@@ -81,3 +81,5 @@ class InvestmentPrice(Base):
     currency: Mapped[str] = mapped_column(String(3))
     price: Mapped[Decimal] = mapped_column(Numeric(24, 8))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    source: Mapped[str | None] = mapped_column(String(20))
+    as_of_date: Mapped[date | None] = mapped_column()

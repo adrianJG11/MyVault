@@ -1,18 +1,18 @@
 import os
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import DataError
 from sqlalchemy.orm import Session
 
 from database import get_session
 from investments.calculations import calculate_investment_summary
-from investments.ibkr_parser import parse_ibkr_xml
+from investments.ibkr_parser import ParsedIBKRPrice, parse_ibkr_report
 from investments.market_prices import (
     MarketPriceError,
     eodhd_symbol_for,
@@ -54,6 +54,12 @@ class InvestmentPriceRead(BaseModel):
     currency: str
     price: Decimal
     updated_at: datetime
+    source: str | None
+    as_of_date: date | None
+
+
+class IBKRImportResult(ImportResult):
+    prices_updated: int
 
 
 class InvestmentPriceRefreshResult(BaseModel):
@@ -70,6 +76,9 @@ class InvestmentPositionRead(BaseModel):
     quantity: Decimal
     remaining_cost: Decimal
     current_price: Decimal | None
+    price_source: str | None = None
+    price_as_of: date | None = None
+    price_updated_at: datetime | None = None
     market_value: Decimal | None
     unrealized_pl: Decimal | None
     unrealized_return_percent: Decimal | None
@@ -104,6 +113,8 @@ def _set_investment_price(
     currency: str,
     price: Decimal,
     updated_at: datetime,
+    source: str = "manual",
+    as_of_date: date | None = None,
 ) -> InvestmentPrice:
     investment_price = session.scalar(
         select(InvestmentPrice).where(
@@ -119,12 +130,16 @@ def _set_investment_price(
             currency=currency,
             price=price,
             updated_at=updated_at,
+            source=source,
+            as_of_date=as_of_date,
         )
         session.add(investment_price)
     else:
         investment_price.currency = currency
         investment_price.price = price
         investment_price.updated_at = updated_at
+        investment_price.source = source
+        investment_price.as_of_date = as_of_date
 
     return investment_price
 
@@ -179,7 +194,17 @@ def get_investment_summary(
             detail="Investment history cannot be calculated",
         ) from error
 
-    return InvestmentSummaryRead(positions=positions, currencies=currencies)
+    prices_by_ticker = {price.ticker: price for price in prices}
+    position_reads = []
+    for position in positions:
+        position_read = InvestmentPositionRead.model_validate(position)
+        price = prices_by_ticker.get(position.ticker)
+        if price is not None:
+            position_read.price_source = price.source
+            position_read.price_as_of = price.as_of_date
+            position_read.price_updated_at = price.updated_at
+        position_reads.append(position_read)
+    return InvestmentSummaryRead(positions=position_reads, currencies=currencies)
 
 
 @router.put(
@@ -320,6 +345,7 @@ def refresh_investment_prices(
             currency=currencies[ticker],
             price=price,
             updated_at=updated_at,
+            source="eodhd",
         )
 
     session.commit()
@@ -357,19 +383,20 @@ def import_revolut_investment_activities(
             detail="Invalid Revolut investment CSV",
         ) from error
 
-    return _store_investment_activities(session, account_id, parsed_activities)
+    imported, _ = _store_investment_activities(session, account_id, parsed_activities)
+    return ImportResult(imported=imported)
 
 
 @router.post(
     "/accounts/{account_id}/imports/ibkr-investments",
-    response_model=ImportResult,
+    response_model=IBKRImportResult,
     status_code=status.HTTP_201_CREATED,
 )
 def import_ibkr_investment_activities(
     account_id: int,
     file: UploadFile,
     session: Annotated[Session, Depends(get_session)],
-) -> ImportResult:
+) -> IBKRImportResult:
     account = session.get(Account, account_id)
 
     if account is None:
@@ -378,22 +405,27 @@ def import_ibkr_investment_activities(
             detail="Account not found",
         )
     try:
-        parsed_ibkr = parse_ibkr_xml(file.file)
+        parsed_ibkr, prices = parse_ibkr_report(file.file)
     except ValueError as error:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Invalid IBKR report",
         ) from error
 
-    return _store_investment_activities(session, account_id, parsed_ibkr)
+    imported, prices_updated = _store_investment_activities(
+        session, account_id, parsed_ibkr, prices
+    )
+    return IBKRImportResult(imported=imported, prices_updated=prices_updated)
 
 
 def _store_investment_activities(
     session: Session,
     account_id: int,
     parsed_activities: list[ParsedInvestmentActivity],
-) -> ImportResult:
+    prices: list[ParsedIBKRPrice] | None = None,
+) -> tuple[int, int]:
     imported = 0
+    prices_updated = 0
     try:
         for start in range(0, len(parsed_activities), 500):
             statement = (
@@ -410,6 +442,47 @@ def _store_investment_activities(
                 .returning(InvestmentActivity.id)
             )
             imported += len(session.scalars(statement).all())
+        for price in prices or []:
+            currencies = set(
+                session.scalars(
+                    select(InvestmentActivity.currency).where(
+                        InvestmentActivity.account_id == account_id,
+                        InvestmentActivity.ticker == price.ticker,
+                    )
+                ).all()
+            )
+            if currencies != {price.currency}:
+                raise ValueError(
+                    "IBKR prices require matching trade history and currency"
+                )
+            values = {
+                "account_id": account_id,
+                "ticker": price.ticker,
+                "currency": price.currency,
+                "price": price.price,
+                "as_of_date": price.as_of_date,
+                "source": "ibkr",
+                "updated_at": datetime.now(UTC),
+            }
+            statement = (
+                insert(InvestmentPrice)
+                .values(values)
+                .on_conflict_do_update(
+                    index_elements=["account_id", "ticker"],
+                    set_={
+                        key: value
+                        for key, value in values.items()
+                        if key not in {"account_id", "ticker"}
+                    },
+                    where=price.as_of_date
+                    > func.coalesce(
+                        InvestmentPrice.as_of_date,
+                        func.date(InvestmentPrice.updated_at),
+                    ),
+                )
+                .returning(InvestmentPrice.id)
+            )
+            prices_updated += session.scalar(statement) is not None
         session.commit()
     except DataError as error:
         session.rollback()
@@ -417,4 +490,10 @@ def _store_investment_activities(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Investment values cannot be stored",
         ) from error
-    return ImportResult(imported=imported)
+    except ValueError as error:
+        session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=str(error),
+        ) from error
+    return imported, prices_updated
