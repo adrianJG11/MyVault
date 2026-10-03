@@ -239,7 +239,8 @@ the database schema.
 
 ## Development checks
 
-The test suite uses a separate PostgreSQL database named `finanzas_test`.
+Backend tests live in `backend/tests/`. Run them from the repository root with
+`make test`. The suite uses a separate PostgreSQL database named `finanzas_test`.
 Create it once:
 
 ```bash
