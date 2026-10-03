@@ -186,6 +186,73 @@ def test_create_account_rejects_missing_currency() -> None:
     assert response.status_code == 422
 
 
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("name", ""),
+        ("name", "   "),
+        ("name", "a" * 101),
+        ("bank_name", ""),
+        ("bank_name", "   "),
+        ("bank_name", "a" * 101),
+        ("currency", ""),
+        ("currency", "EU"),
+        ("currency", "EURO"),
+        ("currency", "123"),
+        ("currency", "€UR"),
+        ("currency", None),
+    ],
+)
+def test_create_account_rejects_invalid_fields(
+    clean_database: None, field: str, value: str | None
+) -> None:
+    account_data = {"name": "Savings", "bank_name": "Example", "currency": "EUR"}
+    account_data[field] = value
+
+    response = client.post("/accounts", json=account_data)
+
+    assert response.status_code == 422
+    assert client.get("/accounts").json() == []
+
+
+def test_create_account_normalizes_and_persists_fields(clean_database: None) -> None:
+    response = client.post(
+        "/accounts",
+        json={"name": " Savings ", "bank_name": " Example ", "currency": " eur "},
+    )
+
+    assert response.status_code == 201
+    account = response.json()
+    assert account["name"] == "Savings"
+    assert account["bank_name"] == "Example"
+    assert account["currency"] == "EUR"
+    assert client.get("/accounts").json() == [account]
+
+
+def test_create_account_accepts_names_at_database_length_limit(
+    clean_database: None,
+) -> None:
+    account_data = {"name": "a" * 100, "bank_name": "b" * 100, "currency": "USD"}
+
+    response = client.post("/accounts", json=account_data)
+
+    assert response.status_code == 201
+    assert client.get("/accounts").json() == [response.json()]
+
+
+def test_list_accounts_accepts_records_saved_before_input_validation(
+    clean_database: None,
+) -> None:
+    with SessionFactory.begin() as session:
+        session.add(Account(name="", bank_name="Example", currency="eur"))
+
+    response = client.get("/accounts")
+
+    assert response.status_code == 200
+    assert response.json()[0]["name"] == ""
+    assert response.json()[0]["currency"] == "eur"
+
+
 def test_list_accounts_returns_created_account(clean_database: None) -> None:
     account_data = {
         "name": "Main account",

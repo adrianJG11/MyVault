@@ -3,7 +3,7 @@ from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, status
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -14,15 +14,27 @@ router = APIRouter(prefix="/accounts", tags=["accounts"])
 
 
 class AccountCreate(BaseModel):
-    name: str
-    bank_name: str
-    currency: str
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    name: str = Field(min_length=1, max_length=100)
+    bank_name: str = Field(min_length=1, max_length=100)
+    currency: str = Field(pattern=r"^[A-Z]{3}$")
+
+    @field_validator("currency", mode="before")
+    @classmethod
+    def normalize_currency(cls, value: object) -> object:
+        if isinstance(value, str):
+            return value.strip().upper()
+        return value
 
 
-class AccountRead(AccountCreate):
+class AccountRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    name: str
+    bank_name: str
+    currency: str
     current_balance: Decimal | None
     balance_date: date | None
 
