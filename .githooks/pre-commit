@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+
+uv --directory backend run --locked ruff format --check .
+uv --directory backend run --locked ruff check .

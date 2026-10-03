@@ -243,6 +243,21 @@ GitHub Actions runs backend formatting, linting, migrations, and pytest on pull
 requests and pushes to `main`. Each run uses a fresh PostgreSQL 17 test database
 with disposable credentials; it does not load the local `.env` file.
 
+Enable the local pre-commit hook once per checkout:
+
+```bash
+git config --local core.hooksPath .githooks
+```
+
+Before each commit, the hook checks backend formatting and lint using uv and the
+locked dependencies. It checks the whole backend working tree, including
+unstaged changes, and does not modify files. uv must be available in the Git
+process's PATH.
+
+If formatting fails, run `make format`, review and stage the changes, then retry
+the commit. Fix reported lint errors before retrying. Database migrations and
+the full test suite run in CI.
+
 Backend tests live in `backend/tests/`. Run them from the repository root with
 `make test`. The suite uses a separate PostgreSQL database named `finanzas_test`.
 Create it once:
