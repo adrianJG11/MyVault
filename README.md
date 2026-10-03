@@ -50,7 +50,6 @@ Create a `.env` file in the repository root:
 POSTGRES_DB=finanzas
 POSTGRES_USER=finanzas
 POSTGRES_PASSWORD=replace-with-a-private-password
-EODHD_API_KEY=replace-with-your-private-api-key
 ```
 
 The `.env` file is ignored by Git. Never commit it or put its values in the
@@ -119,11 +118,19 @@ matches confidently. Categories can be corrected manually from the transaction
 table. Existing records were backfilled once with the same rules without
 overwriting categories that had already been assigned manually.
 
-After importing, use **Refresh market prices** to retrieve end-of-day prices
-from EODHD. Only ticker symbols are sent to the provider; account names,
+After importing, use **Refresh market prices** to retrieve Yahoo Finance quotes
+without an API key. Only public ticker symbols are sent to Yahoo; account names,
 quantities, trades, balances, and calculated results remain local. USD tickers
-and verified international listings are refreshed automatically. Unsupported
-or unavailable listings keep their manual price input as a fallback.
+use their Yahoo symbols. Verified EUR mappings are SXRV → SXRV.DE, VWCE → VWCE.DE,
+and AIL → AI.PA. Xetra and Paris quotes have a
+[15-minute delay](https://help.yahoo.com/kb/finance/article-exchanges-data-delays-sln2310.html).
+The interface shows the quote's market timestamp, which can be older when markets
+are closed. Currency and listing must match before saving. Unsupported, unavailable,
+or older quotes preserve the saved IBKR report or manual price.
+
+Yahoo's public endpoint is unofficial and may change or limit requests. There is
+no background polling; refresh prices when needed. IBKR imports and manual prices
+continue to work if Yahoo is unavailable.
 
 The application calculates remaining FIFO cost, market value, unrealized
 profit/loss, realized profit/loss, dividends, and total result. EUR and USD

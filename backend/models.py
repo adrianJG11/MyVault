@@ -83,3 +83,4 @@ class InvestmentPrice(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     source: Mapped[str | None] = mapped_column(String(20))
     as_of_date: Mapped[date | None] = mapped_column()
+    quoted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

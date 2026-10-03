@@ -20,6 +20,7 @@ export type InvestmentPosition = {
   price_source: string | null
   price_as_of: string | null
   price_updated_at: string | null
+  price_quoted_at: string | null
   market_value: string | null
   unrealized_pl: string | null
   unrealized_return_percent: string | null

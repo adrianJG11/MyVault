@@ -215,7 +215,7 @@ export function InvestmentsPanel({ accountId }: InvestmentsPanelProps) {
 
       const details = [
         result.unavailable.length > 0
-          ? `Unavailable: ${result.unavailable.join(', ')}.`
+          ? `No newer quote: ${result.unavailable.join(', ')}. Saved prices were kept.`
           : '',
         result.manual_only.length > 0
           ? `No external quote: ${result.manual_only.join(', ')}. Saved report or manual prices were kept.`
@@ -229,7 +229,7 @@ export function InvestmentsPanel({ accountId }: InvestmentsPanelProps) {
       })
     } catch {
       setPriceMessage({
-        text: 'Could not refresh market prices. Saved manual prices were not changed.',
+        text: 'Could not refresh market prices. Saved prices were not changed.',
         tone: 'error',
       })
     } finally {
@@ -259,7 +259,8 @@ export function InvestmentsPanel({ accountId }: InvestmentsPanelProps) {
                 <p className="section-eyebrow">Portfolio</p>
                 <h2>Investment performance</h2>
                 <p>
-                  FIFO results stay separated by currency. Refresh supported
+                  FIFO results stay separated by currency. Yahoo quotes for
+                  supported European listings are delayed by 15 minutes. Refresh
                   prices or enter them manually.
                 </p>
               </div>
@@ -522,13 +523,16 @@ export function InvestmentsPanel({ accountId }: InvestmentsPanelProps) {
                             new Date(`${position.price_as_of}T00:00:00`),
                           )}
                         </small>
+                      ) : position.price_source === 'yahoo' && position.price_quoted_at ? (
+                        <small className="price-date">
+                          Yahoo quote · {position.currency === 'EUR' ? '15 min delayed' : 'may be delayed'} · as of{' '}
+                          {dateTimeFormatter.format(new Date(position.price_quoted_at))}
+                        </small>
                       ) : position.price_updated_at ? (
                         <small className="price-date">
                           {position.price_source === 'manual'
                             ? 'Manual price'
-                            : position.price_source === 'eodhd'
-                              ? 'EODHD closing price'
-                              : 'Saved price'}{' '}
+                            : 'Saved price'}{' '}
                           · saved {dateTimeFormatter.format(new Date(position.price_updated_at))}
                         </small>
                       ) : null}

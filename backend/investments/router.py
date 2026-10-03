@@ -1,4 +1,3 @@
-import os
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Annotated
@@ -15,8 +14,8 @@ from investments.calculations import calculate_investment_summary
 from investments.ibkr_parser import ParsedIBKRPrice, parse_ibkr_report
 from investments.market_prices import (
     MarketPriceError,
-    eodhd_symbol_for,
-    fetch_eodhd_prices,
+    fetch_yahoo_prices,
+    yahoo_symbol_for,
 )
 from investments.revolut_importer import (
     ParsedInvestmentActivity,
@@ -56,6 +55,7 @@ class InvestmentPriceRead(BaseModel):
     updated_at: datetime
     source: str | None
     as_of_date: date | None
+    quoted_at: datetime | None
 
 
 class IBKRImportResult(ImportResult):
@@ -79,6 +79,7 @@ class InvestmentPositionRead(BaseModel):
     price_source: str | None = None
     price_as_of: date | None = None
     price_updated_at: datetime | None = None
+    price_quoted_at: datetime | None = None
     market_value: Decimal | None
     unrealized_pl: Decimal | None
     unrealized_return_percent: Decimal | None
@@ -115,6 +116,7 @@ def _set_investment_price(
     updated_at: datetime,
     source: str = "manual",
     as_of_date: date | None = None,
+    quoted_at: datetime | None = None,
 ) -> InvestmentPrice:
     investment_price = session.scalar(
         select(InvestmentPrice).where(
@@ -132,6 +134,7 @@ def _set_investment_price(
             updated_at=updated_at,
             source=source,
             as_of_date=as_of_date,
+            quoted_at=quoted_at,
         )
         session.add(investment_price)
     else:
@@ -140,6 +143,7 @@ def _set_investment_price(
         investment_price.updated_at = updated_at
         investment_price.source = source
         investment_price.as_of_date = as_of_date
+        investment_price.quoted_at = quoted_at
 
     return investment_price
 
@@ -203,6 +207,7 @@ def get_investment_summary(
             position_read.price_source = price.source
             position_read.price_as_of = price.as_of_date
             position_read.price_updated_at = price.updated_at
+            position_read.price_quoted_at = price.quoted_at
         position_reads.append(position_read)
     return InvestmentSummaryRead(positions=position_reads, currencies=currencies)
 
@@ -302,7 +307,7 @@ def refresh_investment_prices(
     provider_symbols = {
         position.ticker: provider_symbol
         for position in open_positions
-        if (provider_symbol := eodhd_symbol_for(position.ticker, position.currency))
+        if (provider_symbol := yahoo_symbol_for(position.ticker, position.currency))
         is not None
     }
     manual_only = sorted(
@@ -318,41 +323,60 @@ def refresh_investment_prices(
             manual_only=manual_only,
         )
 
-    api_key = os.getenv("EODHD_API_KEY", "").strip()
-
-    if not api_key:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Market price API is not configured",
-        )
-
+    currencies = {position.ticker: position.currency for position in open_positions}
     try:
-        result = fetch_eodhd_prices(provider_symbols, api_key)
+        result = fetch_yahoo_prices(provider_symbols, currencies)
     except MarketPriceError as error:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Market price provider unavailable",
         ) from error
 
-    currencies = {position.ticker: position.currency for position in open_positions}
     updated_at = datetime.now(UTC)
+    saved_prices = {
+        price.ticker: price
+        for price in session.scalars(
+            select(InvestmentPrice).where(InvestmentPrice.account_id == account_id)
+        )
+    }
+    updated = []
+    unavailable = list(result.unavailable)
 
-    for ticker, price in result.prices.items():
+    for ticker, quote in result.prices.items():
+        saved = saved_prices.get(ticker)
+        if saved is not None and (
+            (saved.quoted_at is not None and saved.quoted_at >= quote.quoted_at)
+            or (
+                saved.quoted_at is None
+                and saved.as_of_date is not None
+                and saved.as_of_date >= quote.quoted_at.date()
+            )
+            or (
+                saved.quoted_at is None
+                and saved.as_of_date is None
+                and saved.updated_at >= quote.quoted_at
+            )
+        ):
+            unavailable.append(ticker)
+            continue
         _set_investment_price(
             session=session,
             account_id=account_id,
             ticker=ticker,
             currency=currencies[ticker],
-            price=price,
+            price=quote.price,
             updated_at=updated_at,
-            source="eodhd",
+            source="yahoo",
+            as_of_date=quote.quoted_at.date(),
+            quoted_at=quote.quoted_at,
         )
+        updated.append(ticker)
 
     session.commit()
 
     return InvestmentPriceRefreshResult(
-        updated=sorted(result.prices),
-        unavailable=result.unavailable,
+        updated=sorted(updated),
+        unavailable=sorted(unavailable),
         manual_only=manual_only,
     )
 
@@ -462,6 +486,7 @@ def _store_investment_activities(
                 "price": price.price,
                 "as_of_date": price.as_of_date,
                 "source": "ibkr",
+                "quoted_at": None,
                 "updated_at": datetime.now(UTC),
             }
             statement = (
