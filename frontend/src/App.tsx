@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 
 import { fetchAccounts } from './features/accounts/api'
+import { AccountCreateForm } from './features/accounts/AccountCreateForm'
 import type { Account } from './features/accounts/types'
 import { InvestmentsPanel } from './features/investments/InvestmentsPanel'
 import { TransactionsPanel } from './features/transactions/TransactionsPanel'
@@ -32,6 +33,11 @@ function App() {
   async function refreshAccounts() {
     const refreshedAccounts = await fetchAccounts()
     setAccounts(refreshedAccounts)
+  }
+
+  function handleAccountCreated(account: Account) {
+    setAccounts((currentAccounts) => [...currentAccounts, account])
+    setSelectedAccountId(account.id)
   }
 
   useEffect(() => {
@@ -67,10 +73,16 @@ function App() {
         </p>
       )}
 
-      {!isLoading && !error && accounts.length === 0 && (
-        <p className="notice notice-info">
-          Create an account through the API before importing data.
-        </p>
+      {!isLoading && !error && (
+        <details className="import-panel" open={accounts.length === 0}>
+          <summary>Add account</summary>
+          {accounts.length === 0 && (
+            <p className="notice notice-info">
+              Create your first account to start importing data.
+            </p>
+          )}
+          <AccountCreateForm onCreated={handleAccountCreated} />
+        </details>
       )}
 
       {selectedAccount !== null && (

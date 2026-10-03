@@ -70,12 +70,36 @@ h1 {
 }
 
 .account-selector select,
+.account-fields input,
+.account-fields select,
 .import-controls select {
   padding: 0.65rem 0.75rem;
   border: 1px solid #475569;
   border-radius: 0.5rem;
   color: inherit;
   background: #111827;
+}
+
+.account-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+  gap: 1rem;
+  margin: 1rem 0;
+}
+
+.account-fields label {
+  display: grid;
+  gap: 0.4rem;
+  color: #94a3b8;
+  font-size: 0.875rem;
+}
+
+.account-fields input,
+.account-fields select {
+  width: 100%;
+  min-width: 0;
+  color: #e5e7eb;
+  font: inherit;
 }
 
 .account-balance {

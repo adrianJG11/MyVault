@@ -137,8 +137,10 @@ profit/loss, realized profit/loss, dividends, and total result. EUR and USD
 remain separate because the meaning of Revolut's exported FX rate has not yet
 been verified. These figures are for personal analysis, not tax filing.
 
-Account creation is not in the web interface yet. To create the first account,
-open <http://127.0.0.1:8000/docs> and use `POST /accounts` with a body such as:
+To create an account, open **Add account** in the web interface, enter its name,
+bank or broker, and currency (EUR or USD). The new account is selected immediately
+so you can import data. Names must contain 1–100 characters after trimming spaces.
+You can also use `POST /accounts` in <http://127.0.0.1:8000/docs> with a body such as:
 
 ```json
 {
