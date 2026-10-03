@@ -1,5 +1,5 @@
 from collections.abc import Iterator
-from datetime import date
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from io import BytesIO
 from xml.etree import ElementTree
@@ -11,7 +11,7 @@ from sqlalchemy import delete
 
 from database import SessionFactory, engine
 from investments import router as investments_router
-from investments.market_prices import MarketPriceResult
+from investments.market_prices import MarketPriceError, MarketPriceResult, MarketQuote
 from main import app
 from models import Account, InvestmentActivity, InvestmentPrice, Transaction
 
@@ -65,7 +65,9 @@ def _create_fake_revolut_investment_csv() -> bytes:
     )
 
 
-def _create_fake_ibkr_xml() -> bytes:
+def _create_fake_ibkr_xml(
+    mark_price: str | None = None, report_date: str = "20260930"
+) -> bytes:
     root = ElementTree.Element("FlexQueryResponse")
     statement = ElementTree.SubElement(root, "FlexStatement", accountId="TEST_ACCOUNT")
     trades = ElementTree.SubElement(statement, "Trades")
@@ -102,6 +104,18 @@ def _create_fake_ibkr_xml() -> bytes:
             "dateTime": "20260201;090000",
         },
     )
+    if mark_price is not None:
+        positions = ElementTree.SubElement(statement, "OpenPositions")
+        ElementTree.SubElement(
+            positions,
+            "OpenPosition",
+            common
+            | {
+                "levelOfDetail": "SUMMARY",
+                "markPrice": mark_price,
+                "reportDate": report_date,
+            },
+        )
     return ElementTree.tostring(root)
 
 
@@ -996,7 +1010,7 @@ def test_import_ibkr_stores_lists_and_calculates_activities(ibkr_account: int) -
         files={"file": ("report.xml", _create_fake_ibkr_xml(), "application/xml")},
     )
     assert response.status_code == 201
-    assert response.json() == {"imported": 2}
+    assert response.json() == {"imported": 2, "prices_updated": 0}
 
     activities = client.get(
         "/investment-activities", params={"account_id": ibkr_account}
@@ -1034,8 +1048,8 @@ def test_import_ibkr_skips_duplicates_in_file_and_repeat_uploads(
     )
 
     assert first.status_code == second.status_code == 201
-    assert first.json() == {"imported": 2}
-    assert second.json() == {"imported": 0}
+    assert first.json() == {"imported": 2, "prices_updated": 0}
+    assert second.json() == {"imported": 0, "prices_updated": 0}
     assert (
         len(
             client.get(
@@ -1061,7 +1075,7 @@ def test_import_ibkr_does_not_merge_distinct_identical_executions(
         files={"file": ("report.xml", ElementTree.tostring(root), "application/xml")},
     )
     assert response.status_code == 201
-    assert response.json() == {"imported": 3}
+    assert response.json() == {"imported": 3, "prices_updated": 0}
 
 
 def test_import_ibkr_rejects_invalid_trade_without_partial_import(
@@ -1121,7 +1135,7 @@ def test_import_ibkr_accepts_empty_report(ibkr_account: int) -> None:
         files={"file": ("report.xml", b"<FlexQueryResponse/>", "application/xml")},
     )
     assert response.status_code == 201
-    assert response.json() == {"imported": 0}
+    assert response.json() == {"imported": 0, "prices_updated": 0}
 
 
 def test_import_ibkr_rejects_unknown_account(clean_database: None) -> None:
@@ -1131,6 +1145,187 @@ def test_import_ibkr_rejects_unknown_account(clean_database: None) -> None:
     )
     assert response.status_code == 404
     assert response.json() == {"detail": "Account not found"}
+
+
+def test_import_ibkr_prices_calculates_value_and_exposes_report_date(
+    ibkr_account: int,
+) -> None:
+    response = client.post(
+        f"/accounts/{ibkr_account}/imports/ibkr-investments",
+        files={"file": ("report.xml", _create_fake_ibkr_xml("15"), "application/xml")},
+    )
+    assert response.status_code == 201
+    assert response.json() == {"imported": 2, "prices_updated": 1}
+
+    summary = client.get("/investment-summary", params={"account_id": ibkr_account})
+    assert summary.status_code == 200
+    position = summary.json()["positions"][0]
+    assert Decimal(position["market_value"]) == Decimal(15)
+    assert Decimal(position["unrealized_pl"]) == Decimal("4.5")
+    assert position["price_source"] == "ibkr"
+    assert position["price_as_of"] == "2026-09-30"
+    assert position["price_updated_at"] is not None
+
+
+def test_ibkr_prices_support_sxrv_and_vwce_without_external_quotes(
+    ibkr_account: int,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = ElementTree.fromstring(_create_fake_ibkr_xml("15"))
+    for node in root.iter():
+        if "symbol" in node.attrib:
+            node.attrib.update(symbol="SXRV", currency="EUR")
+    trades = root.find(".//Trades")
+    positions = root.find(".//OpenPositions")
+    assert trades is not None and positions is not None
+    ElementTree.SubElement(
+        trades, "Trade", trades[0].attrib | {"tradeID": "VWCE_BUY", "symbol": "VWCE"}
+    )
+    ElementTree.SubElement(
+        positions,
+        "OpenPosition",
+        positions[0].attrib | {"symbol": "VWCE", "markPrice": "20"},
+    )
+
+    response = client.post(
+        f"/accounts/{ibkr_account}/imports/ibkr-investments",
+        files={"file": ("report.xml", ElementTree.tostring(root), "application/xml")},
+    )
+    assert response.status_code == 201
+    assert response.json() == {"imported": 3, "prices_updated": 2}
+    summary = client.get(
+        "/investment-summary", params={"account_id": ibkr_account}
+    ).json()
+    assert {position["ticker"] for position in summary["positions"]} == {"SXRV", "VWCE"}
+    assert Decimal(summary["currencies"][0]["market_value"]) == Decimal(55)
+
+    def unavailable_quotes(
+        symbols: dict[str, str], currencies: dict[str, str]
+    ) -> MarketPriceResult:
+        assert symbols == {"SXRV": "SXRV.DE", "VWCE": "VWCE.DE"}
+        assert currencies == {"SXRV": "EUR", "VWCE": "EUR"}
+        return MarketPriceResult(prices={}, unavailable=["SXRV", "VWCE"])
+
+    monkeypatch.setattr(investments_router, "fetch_yahoo_prices", unavailable_quotes)
+    refresh = client.post(f"/accounts/{ibkr_account}/investment-prices/refresh")
+    assert refresh.status_code == 200
+    assert refresh.json()["unavailable"] == ["SXRV", "VWCE"]
+    assert refresh.json()["manual_only"] == []
+    assert (
+        client.get("/investment-summary", params={"account_id": ibkr_account}).json()
+        == summary
+    )
+
+
+def test_import_ibkr_updates_prices_without_new_trades_and_ignores_older_reports(
+    ibkr_account: int,
+) -> None:
+    for mark_price, report_date, expected in [
+        ("15", "20260929", {"imported": 2, "prices_updated": 1}),
+        ("16", "20260930", {"imported": 0, "prices_updated": 1}),
+        ("16", "20260930", {"imported": 0, "prices_updated": 0}),
+        ("14", "20260928", {"imported": 0, "prices_updated": 0}),
+    ]:
+        response = client.post(
+            f"/accounts/{ibkr_account}/imports/ibkr-investments",
+            files={
+                "file": (
+                    "report.xml",
+                    _create_fake_ibkr_xml(mark_price, report_date),
+                    "application/xml",
+                )
+            },
+        )
+        assert response.status_code == 201
+        assert response.json() == expected
+
+    position = client.get(
+        "/investment-summary", params={"account_id": ibkr_account}
+    ).json()["positions"][0]
+    assert Decimal(position["current_price"]) == Decimal(16)
+    assert position["price_as_of"] == "2026-09-30"
+
+
+def test_import_ibkr_position_only_report_refreshes_existing_holdings(
+    ibkr_account: int,
+) -> None:
+    client.post(
+        f"/accounts/{ibkr_account}/imports/ibkr-investments",
+        files={"file": ("report.xml", _create_fake_ibkr_xml(), "application/xml")},
+    )
+    root = ElementTree.fromstring(_create_fake_ibkr_xml("15"))
+    statement = root.find("FlexStatement")
+    assert statement is not None
+    trades = statement.find("Trades")
+    assert trades is not None
+    statement.remove(trades)
+    response = client.post(
+        f"/accounts/{ibkr_account}/imports/ibkr-investments",
+        files={"file": ("prices.xml", ElementTree.tostring(root), "application/xml")},
+    )
+    assert response.status_code == 201
+    assert response.json() == {"imported": 0, "prices_updated": 1}
+
+
+def test_old_ibkr_report_does_not_replace_recent_manual_price(
+    ibkr_account: int,
+) -> None:
+    client.post(
+        f"/accounts/{ibkr_account}/imports/ibkr-investments",
+        files={"file": ("report.xml", _create_fake_ibkr_xml(), "application/xml")},
+    )
+    client.put(f"/accounts/{ibkr_account}/investment-prices/FAKE", json={"price": "20"})
+    response = client.post(
+        f"/accounts/{ibkr_account}/imports/ibkr-investments",
+        files={"file": ("report.xml", _create_fake_ibkr_xml("15"), "application/xml")},
+    )
+    assert response.status_code == 201
+    assert response.json() == {"imported": 0, "prices_updated": 0}
+    position = client.get(
+        "/investment-summary", params={"account_id": ibkr_account}
+    ).json()["positions"][0]
+    assert Decimal(position["current_price"]) == Decimal(20)
+    assert position["price_source"] == "manual"
+    assert position["price_as_of"] is None
+
+
+@pytest.mark.parametrize("mark_price", ["NaN", "1e40"])
+def test_invalid_ibkr_price_does_not_save_trades_or_prices(
+    ibkr_account: int,
+    mark_price: str,
+) -> None:
+    response = client.post(
+        f"/accounts/{ibkr_account}/imports/ibkr-investments",
+        files={
+            "file": ("report.xml", _create_fake_ibkr_xml(mark_price), "application/xml")
+        },
+    )
+    assert response.status_code == 422
+    assert (
+        client.get("/investment-activities", params={"account_id": ibkr_account}).json()
+        == []
+    )
+    with SessionFactory() as session:
+        assert session.query(InvestmentPrice).count() == 0
+
+
+@pytest.mark.parametrize("field,value", [("currency", "EUR"), ("symbol", "UNKNOWN")])
+def test_ibkr_price_requires_matching_trade_history(
+    ibkr_account: int,
+    field: str,
+    value: str,
+) -> None:
+    root = ElementTree.fromstring(_create_fake_ibkr_xml("15"))
+    next(root.iter("OpenPosition")).attrib[field] = value
+    response = client.post(
+        f"/accounts/{ibkr_account}/imports/ibkr-investments",
+        files={"file": ("report.xml", ElementTree.tostring(root), "application/xml")},
+    )
+    assert response.status_code == 422
+    assert (
+        client.get("/investment-activities", params={"account_id": ibkr_account}).json()
+        == []
+    )
 
 
 def test_investment_summary_uses_manual_price_for_profit_and_loss(
@@ -1260,18 +1455,24 @@ def test_refresh_investment_prices_updates_supported_positions(
             )
         },
     )
-    captured_call: tuple[dict[str, str], str] | None = None
+    captured_call: tuple[dict[str, str], dict[str, str]] | None = None
 
-    def fake_fetch(symbols: dict[str, str], api_key: str) -> MarketPriceResult:
+    quoted_at = datetime.now(UTC).replace(microsecond=0) - timedelta(minutes=20)
+
+    def fake_fetch(
+        symbols: dict[str, str], currencies: dict[str, str]
+    ) -> MarketPriceResult:
         nonlocal captured_call
-        captured_call = (symbols, api_key)
+        captured_call = (symbols, currencies)
         return MarketPriceResult(
-            prices={"AIL": Decimal("166.78"), "FAKE": Decimal(120)},
+            prices={
+                "AIL": MarketQuote(Decimal("166.78"), quoted_at),
+                "FAKE": MarketQuote(Decimal(120), quoted_at),
+            },
             unavailable=[],
         )
 
-    monkeypatch.setenv("EODHD_API_KEY", "fake-key")
-    monkeypatch.setattr(investments_router, "fetch_eodhd_prices", fake_fetch)
+    monkeypatch.setattr(investments_router, "fetch_yahoo_prices", fake_fetch)
 
     response = client.post(f"/accounts/{account_id}/investment-prices/refresh")
 
@@ -1282,8 +1483,8 @@ def test_refresh_investment_prices_updates_supported_positions(
         "manual_only": [],
     }
     assert captured_call == (
-        {"AIL": "AI.PA", "FAKE": "FAKE.US"},
-        "fake-key",
+        {"AIL": "AI.PA", "FAKE": "FAKE"},
+        {"AIL": "EUR", "FAKE": "USD"},
     )
 
     summary_response = client.get(
@@ -1294,13 +1495,17 @@ def test_refresh_investment_prices_updates_supported_positions(
         position["ticker"]: Decimal(position["current_price"])
         for position in summary_response.json()["positions"]
     }
+    for position in summary_response.json()["positions"]:
+        assert position["price_source"] == "yahoo"
+        assert datetime.fromisoformat(position["price_quoted_at"]) == quoted_at
+        assert position["price_as_of"] == quoted_at.date().isoformat()
     assert current_prices == {
         "AIL": Decimal("166.78"),
         "FAKE": Decimal(120),
     }
 
 
-def test_refresh_investment_prices_requires_api_key(
+def test_refresh_investment_prices_keeps_manual_price_on_provider_failure(
     clean_database: None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1323,12 +1528,29 @@ def test_refresh_investment_prices_requires_api_key(
             )
         },
     )
-    monkeypatch.delenv("EODHD_API_KEY", raising=False)
 
+    assert (
+        client.put(
+            f"/accounts/{account_id}/investment-prices/FAKE", json={"price": "100"}
+        ).status_code
+        == 200
+    )
+    saved_summary = client.get(
+        "/investment-summary", params={"account_id": account_id}
+    ).json()
+
+    def failed_fetch(*args: object) -> MarketPriceResult:
+        raise MarketPriceError("Request failed")
+
+    monkeypatch.setattr(investments_router, "fetch_yahoo_prices", failed_fetch)
     response = client.post(f"/accounts/{account_id}/investment-prices/refresh")
 
-    assert response.status_code == 503
-    assert response.json() == {"detail": "Market price API is not configured"}
+    assert response.status_code == 502
+    assert response.json() == {"detail": "Market price provider unavailable"}
+    assert (
+        client.get("/investment-summary", params={"account_id": account_id}).json()
+        == saved_summary
+    )
 
 
 def test_update_transaction_category_persists_category(
@@ -1397,3 +1619,97 @@ def test_update_transaction_category_rejects_empty_category(
     )
 
     assert response.status_code == 422
+
+
+@pytest.mark.parametrize("saved_source", ["ibkr", "yahoo", "manual"])
+def test_refresh_keeps_newer_saved_prices(
+    ibkr_account: int,
+    monkeypatch: pytest.MonkeyPatch,
+    saved_source: str,
+) -> None:
+    response = client.post(
+        f"/accounts/{ibkr_account}/imports/ibkr-investments",
+        files={"file": ("report.xml", _create_fake_ibkr_xml("15"), "application/xml")},
+    )
+    assert response.status_code == 201
+    quoted_at = datetime(2026, 10, 1, 12, tzinfo=UTC)
+
+    def quote_fetch(*args: object) -> MarketPriceResult:
+        return MarketPriceResult(
+            prices={"FAKE": MarketQuote(Decimal(20), quoted_at)}, unavailable=[]
+        )
+
+    monkeypatch.setattr(investments_router, "fetch_yahoo_prices", quote_fetch)
+    if saved_source in {"yahoo", "manual"}:
+        refresh = client.post(f"/accounts/{ibkr_account}/investment-prices/refresh")
+        assert refresh.status_code == 200
+        assert refresh.json()["updated"] == ["FAKE"]
+        position = client.get(
+            "/investment-summary", params={"account_id": ibkr_account}
+        ).json()["positions"][0]
+        assert position["price_source"] == "yahoo"
+        assert datetime.fromisoformat(position["price_quoted_at"]) == quoted_at
+    if saved_source == "manual":
+        manual = client.put(
+            f"/accounts/{ibkr_account}/investment-prices/FAKE", json={"price": "25"}
+        )
+        assert manual.status_code == 200
+        assert manual.json()["quoted_at"] is None
+
+    saved_summary = client.get(
+        "/investment-summary", params={"account_id": ibkr_account}
+    ).json()
+    quoted_at = datetime(2026, 9, 30, 12, tzinfo=UTC)
+    refresh = client.post(f"/accounts/{ibkr_account}/investment-prices/refresh")
+    assert refresh.status_code == 200
+    assert refresh.json() == {"updated": [], "unavailable": ["FAKE"], "manual_only": []}
+    assert (
+        client.get("/investment-summary", params={"account_id": ibkr_account}).json()
+        == saved_summary
+    )
+
+
+def test_newer_ibkr_report_clears_previous_yahoo_quote_timestamp(
+    ibkr_account: int,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client.post(
+        f"/accounts/{ibkr_account}/imports/ibkr-investments",
+        files={
+            "file": (
+                "report.xml",
+                _create_fake_ibkr_xml("15", "20260929"),
+                "application/xml",
+            )
+        },
+    )
+    monkeypatch.setattr(
+        investments_router,
+        "fetch_yahoo_prices",
+        lambda *args: MarketPriceResult(
+            prices={
+                "FAKE": MarketQuote(Decimal(20), datetime(2026, 9, 30, 12, tzinfo=UTC))
+            },
+            unavailable=[],
+        ),
+    )
+    refresh = client.post(f"/accounts/{ibkr_account}/investment-prices/refresh")
+    assert refresh.json()["updated"] == ["FAKE"]
+    response = client.post(
+        f"/accounts/{ibkr_account}/imports/ibkr-investments",
+        files={
+            "file": (
+                "report.xml",
+                _create_fake_ibkr_xml("21", "20261001"),
+                "application/xml",
+            )
+        },
+    )
+    assert response.status_code == 201
+    assert response.json()["prices_updated"] == 1
+    position = client.get(
+        "/investment-summary", params={"account_id": ibkr_account}
+    ).json()["positions"][0]
+    assert position["price_source"] == "ibkr"
+    assert position["price_quoted_at"] is None
+    assert Decimal(position["current_price"]) == Decimal(21)

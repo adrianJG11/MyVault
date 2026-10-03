@@ -1,5 +1,6 @@
 import json
-from datetime import UTC, datetime
+from dataclasses import dataclass
+from datetime import UTC, date, datetime
 from decimal import Decimal, DecimalException
 from hashlib import sha256
 from typing import TYPE_CHECKING, BinaryIO
@@ -10,6 +11,14 @@ if TYPE_CHECKING:
     from investments.revolut_importer import ParsedInvestmentActivity
 
 MAX_IBKR_REPORT_BYTES = 10 * 1024 * 1024
+
+
+@dataclass(frozen=True)
+class ParsedIBKRPrice:
+    ticker: str
+    currency: str
+    price: Decimal
+    as_of_date: date
 
 
 class _ReportTreeBuilder(ElementTree.TreeBuilder):
@@ -30,6 +39,13 @@ def parse_flex_xml(source: BinaryIO) -> ElementTree.Element:
 
 
 def parse_ibkr_xml(source: BinaryIO) -> list[ParsedInvestmentActivity]:
+    activities, _ = parse_ibkr_report(source)
+    return activities
+
+
+def parse_ibkr_report(
+    source: BinaryIO,
+) -> tuple[list[ParsedInvestmentActivity], list[ParsedIBKRPrice]]:
     try:
         root = parse_flex_xml(source)
         if root.tag != "FlexQueryResponse":
@@ -124,7 +140,49 @@ def parse_ibkr_xml(source: BinaryIO) -> list[ParsedInvestmentActivity]:
                 }
             )
 
-        return activities
+        prices: dict[str, ParsedIBKRPrice] = {}
+        for position in root.iter("OpenPosition"):
+            if position.attrib.get("assetCategory") != "STK":
+                raise ValueError("Unsupported IBKR asset category")
+            if position.attrib.get("levelOfDetail") != "SUMMARY":
+                raise ValueError("IBKR open positions must use Summary detail")
+            broker_account_id = position.attrib.get("accountId", "").strip()
+            if not broker_account_id:
+                raise ValueError("Missing IBKR position account")
+            broker_accounts.add(broker_account_id)
+            if len(broker_accounts) > 1:
+                raise ValueError("Expected one IBKR account per report")
+
+            ticker = position.attrib.get("symbol", "").strip()
+            currency = position.attrib.get("currency", "").strip()
+            if not ticker or len(ticker) > 20:
+                raise ValueError("Invalid ticker")
+            if (
+                len(currency) != 3
+                or not currency.isascii()
+                or not currency.isalpha()
+                or not currency.isupper()
+            ):
+                raise ValueError("Invalid currency")
+            price = Decimal(position.attrib["markPrice"])
+            if not price.is_finite() or price <= 0:
+                raise ValueError("Invalid IBKR closing price")
+            report_date = date.fromisoformat(position.attrib["reportDate"])
+            if report_date > datetime.now(ZoneInfo("America/New_York")).date():
+                raise ValueError("IBKR price report date is in the future")
+
+            parsed_price = ParsedIBKRPrice(ticker, currency, price, report_date)
+            previous = prices.get(ticker)
+            if previous is not None:
+                if previous.currency != currency:
+                    raise ValueError("IBKR ticker uses multiple currencies")
+                if previous.as_of_date == report_date and previous != parsed_price:
+                    raise ValueError("Conflicting IBKR closing prices")
+                if previous.as_of_date >= report_date:
+                    continue
+            prices[ticker] = parsed_price
+
+        return activities, list(prices.values())
     except (KeyError, DecimalException) as error:
         raise ValueError("Invalid IBKR report") from error
 

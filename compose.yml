@@ -23,7 +23,6 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in the root .env file (see .env.example)}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the root .env file (see .env.example)}
       POSTGRES_HOST: db
-      EODHD_API_KEY: ${EODHD_API_KEY:-}
     depends_on:
       db:
         condition: service_healthy

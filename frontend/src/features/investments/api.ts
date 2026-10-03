@@ -6,6 +6,7 @@ import type {
 
 type ImportResult = {
   imported: number
+  prices_updated?: number
 }
 
 export async function fetchInvestmentActivities(
@@ -34,15 +35,16 @@ export async function fetchInvestmentSummary(
   return (await response.json()) as InvestmentSummary
 }
 
-export async function importRevolutInvestments(
+export async function importInvestments(
   accountId: number,
   file: File,
+  broker: 'revolut' | 'ibkr',
 ): Promise<ImportResult> {
   const formData = new FormData()
   formData.append('file', file)
 
   const response = await fetch(
-    `/api/accounts/${accountId}/imports/revolut-investments`,
+    `/api/accounts/${accountId}/imports/${broker}-investments`,
     {
       method: 'POST',
       body: formData,
@@ -50,7 +52,7 @@ export async function importRevolutInvestments(
   )
 
   if (!response.ok) {
-    throw new Error('Could not import Revolut investments')
+    throw new Error(`Could not import ${broker} investments`)
   }
 
   return (await response.json()) as ImportResult

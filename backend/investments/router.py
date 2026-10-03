@@ -1,22 +1,21 @@
-import os
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import DataError
 from sqlalchemy.orm import Session
 
 from database import get_session
 from investments.calculations import calculate_investment_summary
-from investments.ibkr_parser import parse_ibkr_xml
+from investments.ibkr_parser import ParsedIBKRPrice, parse_ibkr_report
 from investments.market_prices import (
     MarketPriceError,
-    eodhd_symbol_for,
-    fetch_eodhd_prices,
+    fetch_yahoo_prices,
+    yahoo_symbol_for,
 )
 from investments.revolut_importer import (
     ParsedInvestmentActivity,
@@ -54,6 +53,13 @@ class InvestmentPriceRead(BaseModel):
     currency: str
     price: Decimal
     updated_at: datetime
+    source: str | None
+    as_of_date: date | None
+    quoted_at: datetime | None
+
+
+class IBKRImportResult(ImportResult):
+    prices_updated: int
 
 
 class InvestmentPriceRefreshResult(BaseModel):
@@ -70,6 +76,10 @@ class InvestmentPositionRead(BaseModel):
     quantity: Decimal
     remaining_cost: Decimal
     current_price: Decimal | None
+    price_source: str | None = None
+    price_as_of: date | None = None
+    price_updated_at: datetime | None = None
+    price_quoted_at: datetime | None = None
     market_value: Decimal | None
     unrealized_pl: Decimal | None
     unrealized_return_percent: Decimal | None
@@ -104,6 +114,9 @@ def _set_investment_price(
     currency: str,
     price: Decimal,
     updated_at: datetime,
+    source: str = "manual",
+    as_of_date: date | None = None,
+    quoted_at: datetime | None = None,
 ) -> InvestmentPrice:
     investment_price = session.scalar(
         select(InvestmentPrice).where(
@@ -119,12 +132,18 @@ def _set_investment_price(
             currency=currency,
             price=price,
             updated_at=updated_at,
+            source=source,
+            as_of_date=as_of_date,
+            quoted_at=quoted_at,
         )
         session.add(investment_price)
     else:
         investment_price.currency = currency
         investment_price.price = price
         investment_price.updated_at = updated_at
+        investment_price.source = source
+        investment_price.as_of_date = as_of_date
+        investment_price.quoted_at = quoted_at
 
     return investment_price
 
@@ -179,7 +198,18 @@ def get_investment_summary(
             detail="Investment history cannot be calculated",
         ) from error
 
-    return InvestmentSummaryRead(positions=positions, currencies=currencies)
+    prices_by_ticker = {price.ticker: price for price in prices}
+    position_reads = []
+    for position in positions:
+        position_read = InvestmentPositionRead.model_validate(position)
+        price = prices_by_ticker.get(position.ticker)
+        if price is not None:
+            position_read.price_source = price.source
+            position_read.price_as_of = price.as_of_date
+            position_read.price_updated_at = price.updated_at
+            position_read.price_quoted_at = price.quoted_at
+        position_reads.append(position_read)
+    return InvestmentSummaryRead(positions=position_reads, currencies=currencies)
 
 
 @router.put(
@@ -277,7 +307,7 @@ def refresh_investment_prices(
     provider_symbols = {
         position.ticker: provider_symbol
         for position in open_positions
-        if (provider_symbol := eodhd_symbol_for(position.ticker, position.currency))
+        if (provider_symbol := yahoo_symbol_for(position.ticker, position.currency))
         is not None
     }
     manual_only = sorted(
@@ -293,40 +323,60 @@ def refresh_investment_prices(
             manual_only=manual_only,
         )
 
-    api_key = os.getenv("EODHD_API_KEY", "").strip()
-
-    if not api_key:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Market price API is not configured",
-        )
-
+    currencies = {position.ticker: position.currency for position in open_positions}
     try:
-        result = fetch_eodhd_prices(provider_symbols, api_key)
+        result = fetch_yahoo_prices(provider_symbols, currencies)
     except MarketPriceError as error:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Market price provider unavailable",
         ) from error
 
-    currencies = {position.ticker: position.currency for position in open_positions}
     updated_at = datetime.now(UTC)
+    saved_prices = {
+        price.ticker: price
+        for price in session.scalars(
+            select(InvestmentPrice).where(InvestmentPrice.account_id == account_id)
+        )
+    }
+    updated = []
+    unavailable = list(result.unavailable)
 
-    for ticker, price in result.prices.items():
+    for ticker, quote in result.prices.items():
+        saved = saved_prices.get(ticker)
+        if saved is not None and (
+            (saved.quoted_at is not None and saved.quoted_at >= quote.quoted_at)
+            or (
+                saved.quoted_at is None
+                and saved.as_of_date is not None
+                and saved.as_of_date >= quote.quoted_at.date()
+            )
+            or (
+                saved.quoted_at is None
+                and saved.as_of_date is None
+                and saved.updated_at >= quote.quoted_at
+            )
+        ):
+            unavailable.append(ticker)
+            continue
         _set_investment_price(
             session=session,
             account_id=account_id,
             ticker=ticker,
             currency=currencies[ticker],
-            price=price,
+            price=quote.price,
             updated_at=updated_at,
+            source="yahoo",
+            as_of_date=quote.quoted_at.date(),
+            quoted_at=quote.quoted_at,
         )
+        updated.append(ticker)
 
     session.commit()
 
     return InvestmentPriceRefreshResult(
-        updated=sorted(result.prices),
-        unavailable=result.unavailable,
+        updated=sorted(updated),
+        unavailable=sorted(unavailable),
         manual_only=manual_only,
     )
 
@@ -357,19 +407,20 @@ def import_revolut_investment_activities(
             detail="Invalid Revolut investment CSV",
         ) from error
 
-    return _store_investment_activities(session, account_id, parsed_activities)
+    imported, _ = _store_investment_activities(session, account_id, parsed_activities)
+    return ImportResult(imported=imported)
 
 
 @router.post(
     "/accounts/{account_id}/imports/ibkr-investments",
-    response_model=ImportResult,
+    response_model=IBKRImportResult,
     status_code=status.HTTP_201_CREATED,
 )
 def import_ibkr_investment_activities(
     account_id: int,
     file: UploadFile,
     session: Annotated[Session, Depends(get_session)],
-) -> ImportResult:
+) -> IBKRImportResult:
     account = session.get(Account, account_id)
 
     if account is None:
@@ -378,22 +429,27 @@ def import_ibkr_investment_activities(
             detail="Account not found",
         )
     try:
-        parsed_ibkr = parse_ibkr_xml(file.file)
+        parsed_ibkr, prices = parse_ibkr_report(file.file)
     except ValueError as error:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Invalid IBKR report",
         ) from error
 
-    return _store_investment_activities(session, account_id, parsed_ibkr)
+    imported, prices_updated = _store_investment_activities(
+        session, account_id, parsed_ibkr, prices
+    )
+    return IBKRImportResult(imported=imported, prices_updated=prices_updated)
 
 
 def _store_investment_activities(
     session: Session,
     account_id: int,
     parsed_activities: list[ParsedInvestmentActivity],
-) -> ImportResult:
+    prices: list[ParsedIBKRPrice] | None = None,
+) -> tuple[int, int]:
     imported = 0
+    prices_updated = 0
     try:
         for start in range(0, len(parsed_activities), 500):
             statement = (
@@ -410,6 +466,48 @@ def _store_investment_activities(
                 .returning(InvestmentActivity.id)
             )
             imported += len(session.scalars(statement).all())
+        for price in prices or []:
+            currencies = set(
+                session.scalars(
+                    select(InvestmentActivity.currency).where(
+                        InvestmentActivity.account_id == account_id,
+                        InvestmentActivity.ticker == price.ticker,
+                    )
+                ).all()
+            )
+            if currencies != {price.currency}:
+                raise ValueError(
+                    "IBKR prices require matching trade history and currency"
+                )
+            values = {
+                "account_id": account_id,
+                "ticker": price.ticker,
+                "currency": price.currency,
+                "price": price.price,
+                "as_of_date": price.as_of_date,
+                "source": "ibkr",
+                "quoted_at": None,
+                "updated_at": datetime.now(UTC),
+            }
+            statement = (
+                insert(InvestmentPrice)
+                .values(values)
+                .on_conflict_do_update(
+                    index_elements=["account_id", "ticker"],
+                    set_={
+                        key: value
+                        for key, value in values.items()
+                        if key not in {"account_id", "ticker"}
+                    },
+                    where=price.as_of_date
+                    > func.coalesce(
+                        InvestmentPrice.as_of_date,
+                        func.date(InvestmentPrice.updated_at),
+                    ),
+                )
+                .returning(InvestmentPrice.id)
+            )
+            prices_updated += session.scalar(statement) is not None
         session.commit()
     except DataError as error:
         session.rollback()
@@ -417,4 +515,10 @@ def _store_investment_activities(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Investment values cannot be stored",
         ) from error
-    return ImportResult(imported=imported)
+    except ValueError as error:
+        session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=str(error),
+        ) from error
+    return imported, prices_updated
