@@ -239,7 +239,12 @@ the database schema.
 
 ## Development checks
 
-The test suite uses a separate PostgreSQL database named `finanzas_test`.
+GitHub Actions runs backend formatting, linting, migrations, and pytest on pull
+requests and pushes to `main`. Each run uses a fresh PostgreSQL 17 test database
+with disposable credentials; it does not load the local `.env` file.
+
+Backend tests live in `backend/tests/`. Run them from the repository root with
+`make test`. The suite uses a separate PostgreSQL database named `finanzas_test`.
 Create it once:
 
 ```bash
