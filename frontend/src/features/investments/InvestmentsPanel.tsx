@@ -1,4 +1,11 @@
-import { type FormEvent, type ReactNode, useEffect, useState } from 'react'
+import {
+  lazy,
+  Suspense,
+  type FormEvent,
+  type ReactNode,
+  useEffect,
+  useState,
+} from 'react'
 
 import {
   fetchInvestmentActivities,
@@ -10,6 +17,7 @@ import {
 import type { InvestmentActivity, InvestmentSummary } from './types'
 
 const INVESTMENT_ACTIVITIES_PER_PAGE = 10
+const InvestmentCharts = lazy(() => import('./InvestmentCharts'))
 
 const dateTimeFormatter = new Intl.DateTimeFormat('en-GB', {
   dateStyle: 'medium',
@@ -19,7 +27,7 @@ const dateTimeFormatter = new Intl.DateTimeFormat('en-GB', {
 const dateFormatter = new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium' })
 
 function formatMoney(value: string, currency: string) {
-  return new Intl.NumberFormat('es-ES', {
+  return new Intl.NumberFormat('en-GB', {
     style: 'currency',
     currency,
   }).format(Number(value))
@@ -30,7 +38,7 @@ function formatQuantity(value: string | null) {
     return '—'
   }
 
-  return Number(value).toLocaleString('es-ES', {
+  return Number(value).toLocaleString('en-GB', {
     maximumFractionDigits: 12,
   })
 }
@@ -48,7 +56,7 @@ function formatPercent(value: string | null) {
     return '—'
   }
 
-  return `${Number(value).toLocaleString('es-ES', {
+  return `${Number(value).toLocaleString('en-GB', {
     maximumFractionDigits: 2,
   })}%`
 }
@@ -91,7 +99,9 @@ export function InvestmentsPanel({ accountId }: InvestmentsPanelProps) {
   const [isImporting, setIsImporting] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
   const [priceDrafts, setPriceDrafts] = useState<Record<string, string>>({})
-  const [savingPriceTicker, setSavingPriceTicker] = useState<string | null>(null)
+  const [savingPriceTicker, setSavingPriceTicker] = useState<string | null>(
+    null,
+  )
   const [isRefreshingPrices, setIsRefreshingPrices] = useState(false)
   const [priceMessage, setPriceMessage] = useState<{
     text: string
@@ -156,7 +166,8 @@ export function InvestmentsPanel({ accountId }: InvestmentsPanelProps) {
         tone: 'success',
       })
       setSelectedFile(null)
-      const fileInput = form.querySelector<HTMLInputElement>('input[type="file"]')
+      const fileInput =
+        form.querySelector<HTMLInputElement>('input[type="file"]')
       if (fileInput) {
         fileInput.value = ''
       }
@@ -241,7 +252,9 @@ export function InvestmentsPanel({ accountId }: InvestmentsPanelProps) {
 
   if (isLoading) {
     content = (
-      <p className="notice notice-info">Loading investment activities...</p>
+      <p className="notice notice-info" role="status">
+        Loading investment activities...
+      </p>
     )
   } else if (error) {
     content = (
@@ -251,17 +264,15 @@ export function InvestmentsPanel({ accountId }: InvestmentsPanelProps) {
     )
   } else {
     content = (
-      <section>
+      <section className="investment-overview" aria-label="Investment overview">
         {summary.currencies.length > 0 && (
           <div className="investment-performance">
             <header className="section-header">
               <div>
-                <p className="section-eyebrow">Portfolio</p>
-                <h2>Investment performance</h2>
+                <h2>Your investments at a glance</h2>
                 <p>
-                  FIFO results stay separated by currency. Yahoo quotes for
-                  supported European listings are delayed by 15 minutes. Refresh
-                  prices or enter them manually.
+                  Cost, value, and results from your imported trades. Each
+                  currency is shown separately.
                 </p>
               </div>
 
@@ -283,7 +294,13 @@ export function InvestmentsPanel({ accountId }: InvestmentsPanelProps) {
                 className="currency-performance"
                 key={currencySummary.currency}
               >
-                <h3>{currencySummary.currency}</h3>
+                <div className="currency-heading">
+                  <h3>{currencySummary.currency} portfolio</h3>
+                  <span>
+                    {currencySummary.total_open_positions} open positions ·{' '}
+                    {currencySummary.priced_positions} with prices
+                  </span>
+                </div>
 
                 {currencySummary.priced_positions <
                   currencySummary.total_open_positions && (
@@ -293,7 +310,7 @@ export function InvestmentsPanel({ accountId }: InvestmentsPanelProps) {
                   </p>
                 )}
 
-                <div className="summary">
+                <div className="summary investment-summary">
                   <div className="summary-card">
                     <span>Remaining cost</span>
                     <strong>
@@ -302,6 +319,7 @@ export function InvestmentsPanel({ accountId }: InvestmentsPanelProps) {
                         currencySummary.currency,
                       )}
                     </strong>
+                    <small>Cost of your open holdings</small>
                   </div>
 
                   <div className="summary-card">
@@ -314,6 +332,7 @@ export function InvestmentsPanel({ accountId }: InvestmentsPanelProps) {
                             currencySummary.currency,
                           )}
                     </strong>
+                    <small>At the saved prices</small>
                   </div>
 
                   <div className="summary-card">
@@ -328,16 +347,20 @@ export function InvestmentsPanel({ accountId }: InvestmentsPanelProps) {
                             currencySummary.currency,
                           )}
                     </strong>
+                    <small>Open positions</small>
                   </div>
 
                   <div className="summary-card">
                     <span>Realized P/L</span>
-                    <strong className={amountClass(currencySummary.realized_pl)}>
+                    <strong
+                      className={amountClass(currencySummary.realized_pl)}
+                    >
                       {formatMoney(
                         currencySummary.realized_pl,
                         currencySummary.currency,
                       )}
                     </strong>
+                    <small>Completed sales, using FIFO</small>
                   </div>
 
                   <div className="summary-card">
@@ -348,6 +371,7 @@ export function InvestmentsPanel({ accountId }: InvestmentsPanelProps) {
                         currencySummary.currency,
                       )}
                     </strong>
+                    <small>Imported dividend payments</small>
                   </div>
 
                   <div className="summary-card summary-card-highlight">
@@ -362,52 +386,28 @@ export function InvestmentsPanel({ accountId }: InvestmentsPanelProps) {
                             currencySummary.currency,
                           )}
                     </strong>
+                    <small>Realized + unrealized + dividends</small>
                   </div>
                 </div>
 
-                {currencySummary.market_value !== null &&
-                  Number(currencySummary.market_value) > 0 && (
-                    <div className="allocation-chart">
-                      <h4>Portfolio allocation</h4>
-
-                      {summary.positions
-                        .filter(
-                          (position) =>
-                            position.currency === currencySummary.currency &&
-                            Number(position.quantity) > 0 &&
-                            position.market_value !== null,
-                        )
-                        .map((position) => {
-                          const allocation =
-                            (Number(position.market_value) /
-                              Number(currencySummary.market_value)) *
-                            100
-
-                          return (
-                            <div
-                              className="allocation-position"
-                              key={position.ticker}
-                            >
-                              <div className="allocation-label">
-                                <strong>{position.ticker}</strong>
-                                <span>{formatPercent(String(allocation))}</span>
-                              </div>
-                              <div className="allocation-track">
-                                <div
-                                  className="allocation-bar"
-                                  style={{ width: `${allocation}%` }}
-                                />
-                              </div>
-                            </div>
-                          )
-                        })}
-                    </div>
-                  )}
+                <Suspense
+                  fallback={
+                    <p className="chart-card" role="status">
+                      Loading portfolio charts…
+                    </p>
+                  }
+                >
+                  <InvestmentCharts
+                    positions={summary.positions}
+                    currency={currencySummary.currency}
+                    marketValue={currencySummary.market_value}
+                  />
+                </Suspense>
               </div>
             ))}
 
             <div className="positions-header">
-              <h2>Positions</h2>
+              <h2>Your holdings</h2>
 
               <label>
                 <input
@@ -431,15 +431,30 @@ export function InvestmentsPanel({ accountId }: InvestmentsPanelProps) {
             )}
 
             <div className="positions-grid">
+              {displayedPositions.length === 0 && (
+                <div className="empty-state">
+                  <h3>No open holdings</h3>
+                  <p>
+                    {summary.positions.length > 0
+                      ? 'Show closed positions to review your previous holdings.'
+                      : 'Import investment activity to see your holdings here.'}
+                  </p>
+                </div>
+              )}
               {displayedPositions.map((position) => (
                 <article className="position-card" key={position.ticker}>
                   <header className="position-card-header">
-                    <div>
-                      <h3>{position.ticker}</h3>
-                      <span className="position-currency">
-                        {position.currency} · {formatQuantity(position.quantity)}{' '}
-                        shares
+                    <div className="position-identity">
+                      <span className="holding-mark" aria-hidden="true">
+                        {position.ticker.slice(0, 2)}
                       </span>
+                      <div>
+                        <h3>{position.ticker}</h3>
+                        <span className="position-currency">
+                          {position.currency} ·{' '}
+                          {formatQuantity(position.quantity)} shares
+                        </span>
+                      </div>
                     </div>
 
                     <div className="position-total">
@@ -452,16 +467,7 @@ export function InvestmentsPanel({ accountId }: InvestmentsPanelProps) {
                               position.currency,
                             )}
                       </strong>
-                      {position.unrealized_return_percent !== null && (
-                        <small
-                          className={amountClass(
-                            position.unrealized_return_percent,
-                          )}
-                        >
-                          Unrealized return:{' '}
-                          {formatPercent(position.unrealized_return_percent)}
-                        </small>
-                      )}
+                      <small>Including dividends</small>
                     </div>
                   </header>
 
@@ -516,24 +522,35 @@ export function InvestmentsPanel({ accountId }: InvestmentsPanelProps) {
                   <div className="position-price">
                     <span>
                       Saved price ({position.currency})
-                      {position.price_source === 'ibkr' && position.price_as_of ? (
+                      {position.price_source === 'ibkr' &&
+                      position.price_as_of ? (
                         <small className="price-date">
                           IBKR closing price · as of{' '}
                           {dateFormatter.format(
                             new Date(`${position.price_as_of}T00:00:00`),
                           )}
                         </small>
-                      ) : position.price_source === 'yahoo' && position.price_quoted_at ? (
+                      ) : position.price_source === 'yahoo' &&
+                        position.price_quoted_at ? (
                         <small className="price-date">
-                          Yahoo quote · {position.currency === 'EUR' ? '15 min delayed' : 'may be delayed'} · as of{' '}
-                          {dateTimeFormatter.format(new Date(position.price_quoted_at))}
+                          Yahoo quote ·{' '}
+                          {position.currency === 'EUR'
+                            ? '15 min delayed'
+                            : 'may be delayed'}{' '}
+                          · as of{' '}
+                          {dateTimeFormatter.format(
+                            new Date(position.price_quoted_at),
+                          )}
                         </small>
                       ) : position.price_updated_at ? (
                         <small className="price-date">
                           {position.price_source === 'manual'
                             ? 'Manual price'
                             : 'Saved price'}{' '}
-                          · saved {dateTimeFormatter.format(new Date(position.price_updated_at))}
+                          · saved{' '}
+                          {dateTimeFormatter.format(
+                            new Date(position.price_updated_at),
+                          )}
                         </small>
                       ) : null}
                     </span>
@@ -590,43 +607,73 @@ export function InvestmentsPanel({ accountId }: InvestmentsPanelProps) {
           </p>
         </div>
 
-        <div className="table-container">
-          <table>
-            <thead>
-              <tr>
-                <th>Date</th>
-                <th>Type</th>
-                <th>Ticker</th>
-                <th>Quantity</th>
-                <th>Price</th>
-                <th>Total</th>
-                <th>FX rate</th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {visibleActivities.map((activity) => (
-                <tr key={activity.id}>
-                  <td>
-                    {dateTimeFormatter.format(new Date(activity.occurred_at))}
-                  </td>
-                  <td>{activity.activity_type}</td>
-                  <td>{activity.ticker ?? '—'}</td>
-                  <td>{formatQuantity(activity.quantity)}</td>
-                  <td>
-                    {activity.price_per_share === null
-                      ? '—'
-                      : formatMoney(activity.price_per_share, activity.currency)}
-                  </td>
-                  <td>
-                    {formatMoney(activity.total_amount, activity.currency)}
-                  </td>
-                  <td>{formatQuantity(activity.fx_rate)}</td>
+        {activities.length === 0 ? (
+          <div className="empty-state">
+            <h3>No investment activity yet</h3>
+            <p>
+              Import a Revolut CSV or IBKR XML report to start building your
+              portfolio view.
+            </p>
+          </div>
+        ) : (
+          <div
+            className="table-container investment-activity-table"
+            tabIndex={0}
+            role="region"
+            aria-label="Investment activity history"
+          >
+            <table>
+              <caption className="sr-only">
+                Imported investment activity, with amounts in each trade's
+                currency
+              </caption>
+              <thead>
+                <tr>
+                  <th scope="col">Date</th>
+                  <th scope="col">Type</th>
+                  <th scope="col">Ticker</th>
+                  <th scope="col">Quantity</th>
+                  <th scope="col">Price</th>
+                  <th scope="col">Total</th>
+                  <th scope="col">FX rate</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+
+              <tbody>
+                {visibleActivities.map((activity) => (
+                  <tr key={activity.id}>
+                    <td>
+                      {dateTimeFormatter.format(new Date(activity.occurred_at))}
+                    </td>
+                    <td className="activity-type">
+                      {activity.activity_type.replaceAll('_', ' ')}
+                    </td>
+                    <td className="activity-ticker">
+                      {activity.ticker ?? '—'}
+                    </td>
+                    <td data-label="Quantity">
+                      {formatQuantity(activity.quantity)}
+                    </td>
+                    <td data-label="Price">
+                      {activity.price_per_share === null
+                        ? '—'
+                        : formatMoney(
+                            activity.price_per_share,
+                            activity.currency,
+                          )}
+                    </td>
+                    <td className={amountClass(activity.total_amount)}>
+                      {formatMoney(activity.total_amount, activity.currency)}
+                    </td>
+                    <td data-label="FX rate">
+                      {formatQuantity(activity.fx_rate)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
 
         {totalPages > 1 && (
           <nav className="pagination" aria-label="Investment activity pages">
@@ -721,6 +768,11 @@ export function InvestmentsPanel({ accountId }: InvestmentsPanelProps) {
           </div>
         </form>
       </details>
+
+      <p className="investment-price-note">
+        Prices are saved snapshots. Supported European Yahoo listings have a
+        15-minute delay; you can also save prices manually.
+      </p>
 
       {importMessage && (
         <p

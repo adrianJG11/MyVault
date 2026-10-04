@@ -13,6 +13,8 @@ export function TransactionCategorySelect({
 }: TransactionCategorySelectProps) {
   return (
     <select
+      className={`category-select${category === null ? ' category-select-empty' : ''}`}
+      aria-label={`Category for transaction ${transactionId}`}
       value={category ?? ''}
       onChange={(event) => void onChange(transactionId, event.target.value)}
     >

@@ -6,3 +6,9 @@ export type Account = {
   current_balance: string | null
   balance_date: string | null
 }
+
+export type AccountCreate = {
+  name: string
+  bank_name: string
+  currency: string
+}

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 
 import { fetchAccounts } from './features/accounts/api'
+import { AccountCreateForm } from './features/accounts/AccountCreateForm'
 import type { Account } from './features/accounts/types'
 import { InvestmentsPanel } from './features/investments/InvestmentsPanel'
 import { TransactionsPanel } from './features/transactions/TransactionsPanel'
@@ -8,7 +9,7 @@ import { TransactionsPanel } from './features/transactions/TransactionsPanel'
 type ActiveTab = 'transactions' | 'investments'
 
 function formatMoney(value: string, currency: string) {
-  return new Intl.NumberFormat('es-ES', {
+  return new Intl.NumberFormat('en-GB', {
     style: 'currency',
     currency,
   }).format(Number(value))
@@ -22,7 +23,9 @@ function formatDate(value: string) {
 
 function App() {
   const [accounts, setAccounts] = useState<Account[]>([])
-  const [selectedAccountId, setSelectedAccountId] = useState<number | null>(null)
+  const [selectedAccountId, setSelectedAccountId] = useState<number | null>(
+    null,
+  )
   const [activeTab, setActiveTab] = useState<ActiveTab>('transactions')
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -34,6 +37,11 @@ function App() {
     setAccounts(refreshedAccounts)
   }
 
+  function handleAccountCreated(account: Account) {
+    setAccounts((currentAccounts) => [...currentAccounts, account])
+    setSelectedAccountId(account.id)
+  }
+
   useEffect(() => {
     async function loadAccounts() {
       try {
@@ -41,7 +49,7 @@ function App() {
         setAccounts(loadedAccounts)
         setSelectedAccountId(loadedAccounts[0]?.id ?? null)
       } catch {
-        setError('Could not load accounts.')
+        setError('Could not load accounts. Reload the page to try again.')
       } finally {
         setIsLoading(false)
       }
@@ -53,31 +61,48 @@ function App() {
   return (
     <main>
       <header className="page-header">
-        <p className="page-eyebrow">Local-first personal finance</p>
-        <h1>Dinero</h1>
-        <p className="page-description">
-          Understand your accounts, spending, and investments.
-        </p>
+        <div className="brand">
+          <span className="brand-mark" aria-hidden="true">
+            MV
+          </span>
+          <div>
+            <h1>MyVault</h1>
+            <p className="page-description">Your money, in perspective.</p>
+          </div>
+        </div>
       </header>
 
-      {isLoading && <p className="notice notice-info">Loading accounts...</p>}
+      {isLoading && (
+        <p className="notice notice-info" role="status">
+          Loading accounts…
+        </p>
+      )}
       {error && (
         <p className="notice notice-error" role="alert">
           {error}
         </p>
       )}
 
-      {!isLoading && !error && accounts.length === 0 && (
-        <p className="notice notice-info">
-          Create an account through the API before importing data.
-        </p>
+      {!isLoading && !error && (
+        <details
+          className="import-panel account-create-panel"
+          open={accounts.length === 0}
+        >
+          <summary>Add account</summary>
+          {accounts.length === 0 && (
+            <p className="notice notice-info">
+              Create your first account to start importing transactions.
+            </p>
+          )}
+          <AccountCreateForm onCreated={handleAccountCreated} />
+        </details>
       )}
 
       {selectedAccount !== null && (
         <>
           <div className="app-toolbar">
             <div className="account-selector">
-              <label htmlFor="account">Account</label>
+              <label htmlFor="account">Selected account</label>
 
               <select
                 id="account"
@@ -94,10 +119,10 @@ function App() {
               </select>
 
               <div className="account-balance">
-                <span>Current balance</span>
+                <span>Last known balance</span>
                 <strong>
                   {selectedAccount.current_balance === null
-                    ? 'Not available'
+                    ? 'Balance unavailable'
                     : formatMoney(
                         selectedAccount.current_balance,
                         selectedAccount.currency,
@@ -115,9 +140,7 @@ function App() {
               <button
                 type="button"
                 className={activeTab === 'transactions' ? 'active' : undefined}
-                aria-current={
-                  activeTab === 'transactions' ? 'page' : undefined
-                }
+                aria-current={activeTab === 'transactions' ? 'page' : undefined}
                 onClick={() => setActiveTab('transactions')}
               >
                 Transactions
@@ -137,6 +160,7 @@ function App() {
             <TransactionsPanel
               key={`transactions-${selectedAccount.id}`}
               accountId={selectedAccount.id}
+              currency={selectedAccount.currency}
               onImportComplete={refreshAccounts}
             />
           </div>

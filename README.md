@@ -22,6 +22,8 @@ What works now:
 - select an account, import an Ibercaja XLSX file, and read its transactions in
   a React and TypeScript interface;
 - inspect money in, money out, monthly cash flow, and spending by category;
+- use matching responsive Transactions and Investments dashboards, with
+  interactive charts, exact figures, and readable activity rows on mobile;
 - search, filter, categorize, and paginate transactions in the web interface;
 - import duplicate-safe Revolut investment activity from CSV and inspect it in
   a separate Investments tab;
@@ -137,8 +139,17 @@ profit/loss, realized profit/loss, dividends, and total result. EUR and USD
 remain separate because the meaning of Revolut's exported FX rate has not yet
 been verified. These figures are for personal analysis, not tax filing.
 
-Account creation is not in the web interface yet. To create the first account,
-open <http://127.0.0.1:8000/docs> and use `POST /accounts` with a body such as:
+The Investments dashboard shows allocation by market value and unrealized
+profit/loss by holding for each currency. Allocation appears only when all open
+positions have saved prices. Holdings without prices are omitted from the
+unrealized-results chart. These charts show saved-price snapshots; they do not
+represent historical portfolio growth. Exact values are available alongside
+the charts, and market prices can still be saved manually from each holding.
+
+To create an account, open **Add account** in the web interface, enter its name,
+bank or broker, and currency (EUR or USD). The new account is selected immediately
+so you can import data. Names must contain 1–100 characters after trimming spaces.
+You can also use `POST /accounts` in <http://127.0.0.1:8000/docs> with a body such as:
 
 ```json
 {
@@ -242,6 +253,21 @@ the database schema.
 GitHub Actions runs backend formatting, linting, migrations, and pytest on pull
 requests and pushes to `main`. Each run uses a fresh PostgreSQL 17 test database
 with disposable credentials; it does not load the local `.env` file.
+
+Enable the local pre-commit hook once per checkout:
+
+```bash
+git config --local core.hooksPath .githooks
+```
+
+Before each commit, the hook checks backend formatting and lint using uv and the
+locked dependencies. It checks the whole backend working tree, including
+unstaged changes, and does not modify files. uv must be available in the Git
+process's PATH.
+
+If formatting fails, run `make format`, review and stage the changes, then retry
+the commit. Fix reported lint errors before retrying. Database migrations and
+the full test suite run in CI.
 
 Backend tests live in `backend/tests/`. Run them from the repository root with
 `make test`. The suite uses a separate PostgreSQL database named `finanzas_test`.
