@@ -1,4 +1,4 @@
-import { type SubmitEvent, useEffect, useState } from 'react'
+import { lazy, Suspense, type SubmitEvent, useEffect, useState } from 'react'
 
 import { TransactionCategorySelect } from './TransactionCategorySelect'
 import {
@@ -10,11 +10,7 @@ import type { Transaction } from './types'
 import { transactionCategories } from './categories'
 
 const TRANSACTIONS_PER_PAGE = 10
-
-const euroFormatter = new Intl.NumberFormat('es-ES', {
-  style: 'currency',
-  currency: 'EUR',
-})
+const MonthlyCashFlowChart = lazy(() => import('./MonthlyCashFlowChart'))
 
 function formatDate(value: string) {
   const [year, month, day] = value.split('-')
@@ -27,13 +23,19 @@ function formatCategory(category: string) {
 
 type TransactionsPanelProps = {
   accountId: number
+  currency: string
   onImportComplete: () => Promise<void>
 }
 
 export function TransactionsPanel({
   accountId,
+  currency,
   onImportComplete,
 }: TransactionsPanelProps) {
+  const moneyFormatter = new Intl.NumberFormat('en-GB', {
+    style: 'currency',
+    currency,
+  })
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [error, setError] = useState<string | null>(null)
   const [categoryError, setCategoryError] = useState<string | null>(null)
@@ -135,11 +137,6 @@ export function TransactionsPanel({
     .map(([month, totals]) => ({ month, ...totals }))
     .sort((first, second) => first.month.localeCompare(second.month))
 
-  const largestMonthlyAmount = Math.max(
-    1,
-    ...monthlyTotals.flatMap((month) => [month.moneyIn, month.moneyOut]),
-  )
-
   useEffect(() => {
     async function loadTransactions() {
       try {
@@ -203,10 +200,7 @@ export function TransactionsPanel({
     }
   }
 
-  async function handleCategoryChange(
-    transactionId: number,
-    category: string,
-  ) {
+  async function handleCategoryChange(transactionId: number, category: string) {
     setCategoryError(null)
 
     try {
@@ -267,90 +261,97 @@ export function TransactionsPanel({
     )
   } else {
     content = (
-      <section>
-        <div className="summary">
+      <section
+        className="transaction-overview"
+        aria-label="Transaction overview"
+      >
+        <div className="overview-heading">
+          <h2>Your account at a glance</h2>
+          <p>
+            {hasActiveFilters
+              ? 'Based on the matching transactions below.'
+              : 'Based on all imported transactions in this account.'}
+          </p>
+        </div>
+        <div className="summary transaction-summary">
           <div className="summary-card">
             <span>Money in</span>
             <strong className="amount-positive">
-              {euroFormatter.format(moneyIn)}
+              {moneyFormatter.format(moneyIn)}
             </strong>
+            <small>Incoming payments</small>
           </div>
 
           <div className="summary-card">
             <span>Money out</span>
             <strong className="amount-negative">
-              {euroFormatter.format(moneyOut)}
+              {moneyFormatter.format(moneyOut)}
             </strong>
+            <small>Outgoing payments</small>
           </div>
 
           <div className="summary-card summary-card-highlight">
-            <span>Net</span>
+            <span>Net cash flow</span>
             <strong
               className={net >= 0 ? 'amount-positive' : 'amount-negative'}
             >
-              {euroFormatter.format(net)}
+              {moneyFormatter.format(net)}
             </strong>
+            <small>Money in minus money out</small>
           </div>
         </div>
 
-        {categorySpending.length > 0 && (
-          <div className="category-chart">
-            <h2>Net spending by category</h2>
-
-            {categorySpending.map((category) => (
-              <div key={category.category}>
-                <div className="bar-label">
-                  <span>{formatCategory(category.category)}</span>
-                  <span>{euroFormatter.format(category.amount)}</span>
-                </div>
-                <div className="bar-track" aria-hidden="true">
-                  <div
-                    className="bar bar-category"
-                    style={{
-                      width: `${(category.amount / largestCategoryAmount) * 100}%`,
-                    }}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {monthlyTotals.length > 0 && (
-          <div className="monthly-chart">
-            <h2>Monthly cash flow</h2>
-
-            {monthlyTotals.map((month) => (
-              <div className="month-chart" key={month.month}>
-                <h3>{month.month}</h3>
-
-                <div className="bar-label">
-                  <span>Money in</span>
-                  <span>{euroFormatter.format(month.moneyIn)}</span>
-                </div>
-                <div className="bar-track" aria-hidden="true">
-                  <div
-                    className="bar bar-in"
-                    style={{
-                      width: `${(month.moneyIn / largestMonthlyAmount) * 100}%`,
-                    }}
-                  />
-                </div>
-
-                <div className="bar-label">
-                  <span>Money out</span>
-                  <span>{euroFormatter.format(month.moneyOut)}</span>
-                </div>
-                <div className="bar-track" aria-hidden="true">
-                  <div
-                    className="bar bar-out"
-                    style={{
-                      width: `${(month.moneyOut / largestMonthlyAmount) * 100}%`,
-                    }}
-                  />
+        {transactions.length > 0 && (
+          <div className="transaction-charts">
+            <Suspense
+              fallback={
+                <p className="chart-card" role="status">
+                  Loading cash flow chart…
+                </p>
+              }
+            >
+              <MonthlyCashFlowChart
+                months={monthlyTotals}
+                currency={currency}
+              />
+            </Suspense>
+            <section
+              className="chart-card category-chart"
+              aria-labelledby="category-heading"
+            >
+              <div className="chart-heading">
+                <div>
+                  <h2 id="category-heading">Spending by category</h2>
+                  <p>
+                    Net spending after refunds. Excludes income and investments.
+                  </p>
                 </div>
               </div>
-            ))}
+              {categorySpending.length === 0 && (
+                <p className="chart-empty">
+                  No category spending in this selection.
+                </p>
+              )}
+
+              <div className="category-bars">
+                {categorySpending.map((category) => (
+                  <div key={category.category}>
+                    <div className="bar-label">
+                      <span>{formatCategory(category.category)}</span>
+                      <span>{moneyFormatter.format(category.amount)}</span>
+                    </div>
+                    <div className="bar-track" aria-hidden="true">
+                      <div
+                        className="bar bar-category"
+                        style={{
+                          width: `${(category.amount / largestCategoryAmount) * 100}%`,
+                        }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
           </div>
         )}
 
@@ -373,43 +374,66 @@ export function TransactionsPanel({
           </p>
         </div>
 
-        <div className="table-container">
-          <table>
-            <thead>
-              <tr>
-                <th>Date</th>
-                <th>Description</th>
-                <th>Category</th>
-                <th>Amount</th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {visibleTransactions.map((transaction) => (
-                <tr key={transaction.id}>
-                  <td>{formatDate(transaction.operation_date)}</td>
-                  <td>{transaction.description}</td>
-                  <td>
-                    <TransactionCategorySelect
-                      transactionId={transaction.id}
-                      category={transaction.category}
-                      onChange={handleCategoryChange}
-                    />
-                  </td>
-                  <td
-                    className={
-                      Number(transaction.amount) >= 0
-                        ? 'amount-positive'
-                        : 'amount-negative'
-                    }
-                  >
-                    {euroFormatter.format(Number(transaction.amount))}
-                  </td>
+        {transactions.length === 0 ? (
+          <div className="empty-state">
+            <h3>
+              {hasActiveFilters
+                ? 'No matching transactions'
+                : 'Your transactions will appear here'}
+            </h3>
+            <p>
+              {hasActiveFilters
+                ? 'Try a different period or clear the filters.'
+                : 'Import an Ibercaja XLSX export to see your cash flow and spending.'}
+            </p>
+          </div>
+        ) : (
+          <div
+            className="table-container transaction-table"
+            tabIndex={0}
+            role="region"
+            aria-label="Transactions table"
+          >
+            <table>
+              <caption className="sr-only">Transactions in {currency}</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Date</th>
+                  <th scope="col">Description</th>
+                  <th scope="col">Category</th>
+                  <th scope="col">Amount</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+
+              <tbody>
+                {visibleTransactions.map((transaction) => (
+                  <tr key={transaction.id}>
+                    <td>{formatDate(transaction.operation_date)}</td>
+                    <td className="transaction-description">
+                      {transaction.description}
+                    </td>
+                    <td>
+                      <TransactionCategorySelect
+                        transactionId={transaction.id}
+                        category={transaction.category}
+                        onChange={handleCategoryChange}
+                      />
+                    </td>
+                    <td
+                      className={
+                        Number(transaction.amount) >= 0
+                          ? 'amount-positive'
+                          : 'amount-negative'
+                      }
+                    >
+                      {moneyFormatter.format(Number(transaction.amount))}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
 
         {totalPages > 1 && (
           <nav className="pagination" aria-label="Transaction pages">
@@ -440,8 +464,17 @@ export function TransactionsPanel({
 
   return (
     <>
-      <section className="filter-panel">
-        <h2>Filters</h2>
+      <section className="filter-panel" aria-labelledby="filters-heading">
+        <div className="filter-heading">
+          <h2 id="filters-heading">Explore your transactions</h2>
+          <button
+            type="button"
+            disabled={!hasActiveFilters}
+            onClick={handleClearFilters}
+          >
+            Clear filters
+          </button>
+        </div>
 
         <div className="date-filters">
           <label>
@@ -518,14 +551,6 @@ export function TransactionsPanel({
             />
           </label>
         </div>
-
-        <button
-          type="button"
-          disabled={!hasActiveFilters}
-          onClick={handleClearFilters}
-        >
-          Clear filters
-        </button>
       </section>
 
       <details className="import-panel">
