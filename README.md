@@ -22,6 +22,8 @@ What works now:
 - select an account, import an Ibercaja XLSX file, and read its transactions in
   a React and TypeScript interface;
 - inspect money in, money out, monthly cash flow, and spending by category;
+- use matching responsive Transactions and Investments dashboards, with
+  interactive charts, exact figures, and readable activity rows on mobile;
 - search, filter, categorize, and paginate transactions in the web interface;
 - import duplicate-safe Revolut investment activity from CSV and inspect it in
   a separate Investments tab;
@@ -136,6 +138,13 @@ The application calculates remaining FIFO cost, market value, unrealized
 profit/loss, realized profit/loss, dividends, and total result. EUR and USD
 remain separate because the meaning of Revolut's exported FX rate has not yet
 been verified. These figures are for personal analysis, not tax filing.
+
+The Investments dashboard shows allocation by market value and unrealized
+profit/loss by holding for each currency. Allocation appears only when all open
+positions have saved prices. Holdings without prices are omitted from the
+unrealized-results chart. These charts show saved-price snapshots; they do not
+represent historical portfolio growth. Exact values are available alongside
+the charts, and market prices can still be saved manually from each holding.
 
 To create an account, open **Add account** in the web interface, enter its name,
 bank or broker, and currency (EUR or USD). The new account is selected immediately

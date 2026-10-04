@@ -448,21 +448,15 @@ h1 {
 
 .section-header h2 {
   margin: 0;
+  font-size: 1.15rem;
+  font-weight: 600;
 }
 
-.section-header p:not(.section-eyebrow) {
+.section-header p {
   max-width: 42rem;
   margin: 0.4rem 0 0;
   color: var(--muted);
-}
-
-.section-eyebrow {
-  margin: 0 0 0.35rem;
-  color: var(--accent);
-  font-size: 0.75rem;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-size: 0.8rem;
 }
 
 .investment-actions {
@@ -471,11 +465,13 @@ h1 {
 
 .investment-actions button {
   padding: 0.6rem 0.9rem;
-  border: 1px solid #0284c7;
-  border-radius: 0.375rem;
-  color: #e0f2fe;
-  background: #075985;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  color: var(--background);
+  background: var(--accent);
   cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 600;
 }
 
 .investment-actions button:disabled {
@@ -498,43 +494,124 @@ h1 {
   margin-bottom: 2rem;
 }
 
-.allocation-chart {
-  margin-top: 1.25rem;
-  padding: 1rem;
-  border: 1px solid var(--border);
-  border-radius: 0.75rem;
-  background: var(--surface);
-}
-
-.allocation-chart h4 {
-  margin: 0 0 1rem;
-}
-
-.allocation-position + .allocation-position {
-  margin-top: 0.9rem;
-}
-
-.allocation-label {
+.currency-heading {
   display: flex;
+  align-items: baseline;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.currency-heading h3 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.currency-heading > span,
+.investment-price-note {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.investment-price-note {
+  margin: -0.5rem 0 1.5rem;
+  max-width: 80ch;
+}
+
+.investment-summary {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.investment-charts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
   gap: 1rem;
-  margin-bottom: 0.35rem;
-  color: var(--text);
-  font-size: 0.875rem;
+}
+
+.portfolio-allocation {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
+  align-items: center;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.allocation-donut {
+  position: relative;
+  width: 200px;
+  height: 210px;
+}
+
+.donut-center {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  pointer-events: none;
+}
+
+.donut-center strong {
+  font-size: 1.75rem;
   font-variant-numeric: tabular-nums;
 }
 
-.allocation-track {
-  overflow: hidden;
-  height: 0.55rem;
-  border-radius: 999px;
-  background: var(--surface-raised);
+.donut-center small {
+  color: var(--muted);
+  font-size: 0.75rem;
 }
 
-.allocation-bar {
-  height: 100%;
-  border-radius: inherit;
-  background: linear-gradient(90deg, #0284c7, var(--accent));
+.allocation-list {
+  display: grid;
+  gap: 0.85rem;
+  max-height: 240px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.allocation-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding-right: 0.25rem;
+  font-size: 0.8rem;
+}
+
+.allocation-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.allocation-name i {
+  flex: 0 0 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+
+.allocation-value {
+  display: grid;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.allocation-value small {
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+
+.returns-scroll {
+  overflow-y: auto;
+  max-height: 250px;
+  margin-top: 0.75rem;
 }
 
 .positions-header {
@@ -548,14 +625,17 @@ h1 {
 
 .positions-header h2 {
   margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
 }
 
 .positions-header label {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  color: var(--text);
+  color: var(--muted);
   cursor: pointer;
+  font-size: 0.8rem;
 }
 
 .positions-header input {
@@ -567,6 +647,7 @@ h1 {
   border-left: 3px solid #f59e0b;
   color: #fde68a;
   background: #1c1917;
+  font-size: 0.8rem;
 }
 
 .positions-grid {
@@ -586,9 +667,33 @@ h1 {
   display: flex;
   justify-content: space-between;
   gap: 1rem;
-  padding: 1rem;
+  padding: 1.25rem;
   border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.position-identity {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.position-identity h3 {
+  overflow-wrap: anywhere;
+}
+
+.holding-mark {
+  display: grid;
+  place-items: center;
+  flex: 0 0 40px;
+  height: 40px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--accent);
   background: var(--surface-raised);
+  font-weight: 600;
+  font-size: 0.85rem;
 }
 
 .position-card-header h3 {
@@ -601,7 +706,7 @@ h1 {
 .position-metrics dt,
 .position-price > span {
   color: var(--muted);
-  font-size: 0.85rem;
+  font-size: 0.75rem;
 }
 
 .position-total {
@@ -609,6 +714,12 @@ h1 {
   align-content: start;
   gap: 0.25rem;
   text-align: right;
+  min-width: 0;
+}
+
+.position-total small {
+  color: var(--muted);
+  font-size: 0.7rem;
 }
 
 .position-total strong {
@@ -617,10 +728,10 @@ h1 {
 
 .position-metrics {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 1rem;
   margin: 0;
-  padding: 1rem;
+  padding: 1.25rem;
 }
 
 .position-metrics div {
@@ -631,6 +742,8 @@ h1 {
 .position-metrics dd {
   margin: 0;
   font-variant-numeric: tabular-nums;
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
 }
 
 .position-price {
@@ -651,7 +764,7 @@ h1 {
 .price-form {
   display: flex;
   gap: 0.5rem;
-  min-width: 12rem;
+  flex: 0 0 auto;
 }
 
 .price-form input {
@@ -661,6 +774,8 @@ h1 {
   border-radius: 0.375rem;
   color: inherit;
   background: var(--background);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.85rem;
 }
 
 .price-form button {
@@ -670,6 +785,7 @@ h1 {
   color: inherit;
   background: var(--surface-raised);
   cursor: pointer;
+  font-size: 0.8rem;
 }
 
 .price-form button:disabled {
@@ -705,13 +821,15 @@ h1 {
   margin-bottom: 1.5rem;
 }
 
-.transaction-summary .summary-card {
+.transaction-summary .summary-card,
+.investment-summary .summary-card {
   padding: 1.25rem 1.5rem;
   border-radius: 10px;
   gap: 0.3rem;
 }
 
-.transaction-summary .summary-card strong {
+.transaction-summary .summary-card strong,
+.investment-summary .summary-card strong {
   font-size: clamp(1.5rem, 3vw, 2rem);
   letter-spacing: -0.04em;
 }
@@ -743,7 +861,8 @@ h1 {
   gap: 1rem;
 }
 
-.chart-heading h2 {
+.chart-heading h2,
+.chart-heading h3 {
   margin: 0;
   font-size: 1rem;
   font-weight: 600;
@@ -915,6 +1034,47 @@ h1 {
   overflow-wrap: anywhere;
 }
 
+.investment-activity-table {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.investment-activity-table table {
+  min-width: 860px;
+  font-size: 0.8rem;
+}
+
+.investment-activity-table th {
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.investment-activity-table td {
+  padding-top: 1rem;
+  padding-bottom: 1rem;
+}
+
+.investment-activity-table td:first-child {
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.investment-activity-table th:nth-child(n + 4),
+.investment-activity-table td:nth-child(n + 4) {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.activity-type {
+  text-transform: capitalize;
+  color: var(--muted);
+}
+
+.activity-ticker {
+  font-weight: 600;
+}
+
 .category-select {
   width: 100%;
   min-width: 135px;
@@ -1008,7 +1168,8 @@ tbody tr:hover {
 }
 
 @media (max-width: 900px) {
-  .transaction-charts {
+  .transaction-charts,
+  .investment-charts {
     grid-template-columns: 1fr;
   }
 
@@ -1032,17 +1193,20 @@ tbody tr:hover {
     flex-direction: column;
   }
 
-  .transaction-summary {
+  .transaction-summary,
+  .investment-summary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 0.75rem;
   }
 
-  .transaction-summary .summary-card {
+  .transaction-summary .summary-card,
+  .investment-summary .summary-card {
     min-width: 0;
     padding: 1rem;
   }
 
-  .transaction-summary .summary-card strong {
+  .transaction-summary .summary-card strong,
+  .investment-summary .summary-card strong {
     font-size: clamp(1.1rem, 4.5vw, 1.5rem);
     overflow-wrap: anywhere;
   }
@@ -1073,7 +1237,8 @@ tbody tr:hover {
     min-width: 0;
   }
 
-  .transaction-table thead {
+  .transaction-table thead,
+  .investment-activity-table thead {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -1130,6 +1295,89 @@ tbody tr:hover {
   .transaction-table .category-select {
     width: 135px;
     min-width: 0;
+  }
+
+  .portfolio-allocation {
+    grid-template-columns: 1fr;
+    gap: 0.5rem;
+  }
+
+  .allocation-donut {
+    justify-self: center;
+  }
+
+  .position-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .position-total {
+    padding-left: 3.25rem;
+  }
+
+  .investment-activity-table table {
+    min-width: 0;
+  }
+
+  .investment-activity-table tbody {
+    display: block;
+  }
+
+  .investment-activity-table tbody tr {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.35rem 0.75rem;
+    padding: 1rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .investment-activity-table tbody tr:last-child {
+    border-bottom: 0;
+  }
+
+  .investment-activity-table td {
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    overflow-wrap: anywhere;
+    font-size: 0.75rem;
+  }
+
+  .investment-activity-table td:first-child {
+    grid-column: 2 / -1;
+    grid-row: 2;
+    text-align: right;
+    white-space: normal;
+    font-size: 0.7rem;
+  }
+
+  .investment-activity-table td:nth-child(2) {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .investment-activity-table td:nth-child(3) {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .investment-activity-table td:nth-child(6) {
+    grid-column: 2 / -1;
+    grid-row: 1;
+    font-size: 0.85rem;
+  }
+
+  .investment-activity-table td[data-label] {
+    display: grid;
+    grid-row: 3;
+    margin-top: 0.5rem;
+    text-align: left;
+    white-space: normal;
+  }
+
+  .investment-activity-table td[data-label]::before {
+    content: attr(data-label);
+    color: var(--muted);
+    font-size: 0.7rem;
   }
 }
 
