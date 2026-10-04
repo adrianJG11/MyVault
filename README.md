@@ -1,4 +1,4 @@
-# Finanzas
+# MyVault
 
 This is a personal, local-first finance application that I am building to use in
 my daily life and to learn backend development properly.
