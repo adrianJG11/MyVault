@@ -6,7 +6,7 @@ from xml.etree import ElementTree
 
 import pytest
 from fastapi.testclient import TestClient
-from openpyxl import Workbook
+from openpyxl import Workbook, load_workbook
 from sqlalchemy import delete
 
 from database import SessionFactory, engine
@@ -771,7 +771,7 @@ def test_import_ibercaja_xlsx_stores_transaction_and_updates_balance(
     )
 
     assert import_response.status_code == 201
-    assert import_response.json() == {"imported": 1}
+    assert import_response.json() == {"imported": 1, "skipped": 0}
 
     list_response = client.get("/transactions")
 
@@ -823,7 +823,7 @@ def test_import_older_transaction_does_not_replace_latest_balance(
         )
 
         assert import_response.status_code == 201
-        assert import_response.json() == {"imported": 1}
+        assert import_response.json() == {"imported": 1, "skipped": 0}
 
     accounts_response = client.get("/accounts")
 
@@ -834,8 +834,10 @@ def test_import_older_transaction_does_not_replace_latest_balance(
     assert account["balance_date"] == "2026-08-17"
 
 
+@pytest.mark.parametrize("duplicate_in_file", [False, True])
 def test_import_ibercaja_xlsx_skips_duplicate_transaction(
     clean_database: None,
+    duplicate_in_file: bool,
 ) -> None:
     create_response = client.post(
         "/accounts",
@@ -850,6 +852,15 @@ def test_import_ibercaja_xlsx_skips_duplicate_transaction(
 
     account_id = create_response.json()["id"]
     workbook_contents = _create_fake_ibercaja_xlsx()
+    if duplicate_in_file:
+        workbook = load_workbook(BytesIO(workbook_contents))
+        sheet = workbook.active
+        sheet.append([cell.value for cell in sheet[7]])
+        with BytesIO() as workbook_file:
+            workbook.save(workbook_file)
+            workbook_contents = workbook_file.getvalue()
+        workbook.close()
+
     files = {
         "file": (
             "ibercaja.xlsx",
@@ -868,9 +879,12 @@ def test_import_ibercaja_xlsx_skips_duplicate_transaction(
     )
 
     assert first_response.status_code == 201
-    assert first_response.json() == {"imported": 1}
+    assert first_response.json() == {"imported": 1, "skipped": int(duplicate_in_file)}
     assert second_response.status_code == 201
-    assert second_response.json() == {"imported": 0}
+    assert second_response.json() == {
+        "imported": 0,
+        "skipped": 2 if duplicate_in_file else 1,
+    }
 
     list_response = client.get("/transactions")
 

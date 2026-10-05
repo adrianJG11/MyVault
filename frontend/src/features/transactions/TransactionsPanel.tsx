@@ -43,7 +43,7 @@ export function TransactionsPanel({
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [importMessage, setImportMessage] = useState<{
     text: string
-    tone: 'success' | 'error'
+    tone: 'success' | 'warning' | 'error'
   } | null>(null)
   const [isImporting, setIsImporting] = useState(false)
   const [dateFrom, setDateFrom] = useState('')
@@ -173,26 +173,39 @@ export function TransactionsPanel({
 
     try {
       const result = await importIbercajaTransactions(accountId, file)
-      const refreshedTransactions = await fetchTransactions(
-        accountId,
-        dateFrom,
-        dateTo,
-        categoryFilter,
-        descriptionFilter,
-      )
-      await onImportComplete()
-
-      setTransactions(refreshedTransactions)
-      setCurrentPage(1)
+      const successMessage =
+        `Imported ${result.imported} new transaction${result.imported === 1 ? '' : 's'}. ` +
+        `Skipped ${result.skipped} duplicate${result.skipped === 1 ? '' : 's'}.`
       setImportMessage({
-        text: `Imported ${result.imported} new transactions.`,
+        text: successMessage,
         tone: 'success',
       })
       setSelectedFile(null)
       form.reset()
-    } catch {
+
+      try {
+        const refreshedTransactions = await fetchTransactions(
+          accountId,
+          dateFrom,
+          dateTo,
+          categoryFilter,
+          descriptionFilter,
+        )
+        setTransactions(refreshedTransactions)
+        setCurrentPage(1)
+        await onImportComplete()
+      } catch {
+        setImportMessage({
+          text: `${successMessage} Import completed, but the view could not refresh. Reload the page.`,
+          tone: 'warning',
+        })
+      }
+    } catch (error) {
       setImportMessage({
-        text: 'The import or transaction refresh failed.',
+        text:
+          error instanceof Error
+            ? error.message
+            : 'Could not confirm the import. Reload the page before trying again.',
         tone: 'error',
       })
     } finally {
