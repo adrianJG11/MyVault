@@ -106,8 +106,10 @@ dependencies, or a Dockerfile.
 
 Open <http://127.0.0.1:5173>, select an account, and upload an Ibercaja `.xlsx`
 export. The transaction list refreshes after the import. Importing the same
-workbook again should report `0` new transactions because duplicate detection
-is performed per account.
+workbook again should report `0` new transactions and the number of duplicates
+skipped, because duplicate detection is performed per account. If the import
+succeeds but refreshing the view fails, the interface preserves the imported
+and skipped counts and asks you to reload the page.
 
 The Investments tab accepts Revolut investment activity CSV exports and IBKR
 Flex XML reports. Select a dedicated account and the matching broker before
@@ -291,11 +293,15 @@ Format the backend:
 make format
 ```
 
-Run backend linting and tests plus frontend linting and a production build:
+Run backend linting and tests plus frontend linting, tests, and a production build:
 
 ```bash
 make check
 ```
+
+The frontend import-feedback tests use Node.js 24's built-in test runner and
+mocked responses. Run them separately with `make frontend-test`; they require
+no database or additional testing dependency.
 
 For local frontend development, start its Vite server in another terminal while
 the API and database are running:

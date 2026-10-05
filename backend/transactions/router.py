@@ -34,6 +34,10 @@ class TransactionCategoryUpdate(BaseModel):
     category: str = Field(min_length=1, max_length=125)
 
 
+class IbercajaImportResult(ImportResult):
+    skipped: int
+
+
 @router.get("/transactions", response_model=list[TransactionRead])
 def list_transactions(
     session: Annotated[Session, Depends(get_session)],
@@ -117,14 +121,14 @@ def update_transaction_category(
 
 @router.post(
     "/accounts/{account_id}/imports/ibercaja",
-    response_model=ImportResult,
+    response_model=IbercajaImportResult,
     status_code=status.HTTP_201_CREATED,
 )
 def import_ibercaja_transactions(
     account_id: int,
     file: UploadFile,
     session: Annotated[Session, Depends(get_session)],
-) -> ImportResult:
+) -> IbercajaImportResult:
     account = session.get(Account, account_id)
 
     if account is None:
@@ -183,4 +187,7 @@ def import_ibercaja_transactions(
 
     session.commit()
 
-    return ImportResult(imported=imported)
+    return IbercajaImportResult(
+        imported=imported,
+        skipped=len(parsed_transactions) - imported,
+    )

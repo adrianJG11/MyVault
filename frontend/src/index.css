@@ -247,6 +247,12 @@ h1 {
   background: #450a0a;
 }
 
+.notice-warning {
+  border-color: #a16207;
+  color: #fde68a;
+  background: #422006;
+}
+
 @media (max-width: 700px) {
   .app-toolbar {
     align-items: stretch;
