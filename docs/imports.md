@@ -83,7 +83,7 @@ To download XML using the Flex Web Service, set `IBKR_FLEX_TOKEN` and
 root:
 
 ```bash
-uv --directory backend run --env-file ../.env python -m investments.ibkr_importer
+make ibkr-download
 ```
 
 The downloader waits for generation, retries transient errors a limited number

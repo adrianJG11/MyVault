@@ -1,4 +1,4 @@
-.PHONY: format lint test frontend-lint frontend-test frontend-build check
+.PHONY: format lint test frontend-lint frontend-test frontend-build ibkr-download check
 
 format:
 	uv --directory backend run ruff format .
@@ -17,5 +17,8 @@ frontend-test:
 
 frontend-build:
 	npm --prefix frontend run build
+
+ibkr-download:
+	uv --directory backend run --env-file ../.env python -m investments.ibkr_importer
 
 check: lint test frontend-lint frontend-test frontend-build
