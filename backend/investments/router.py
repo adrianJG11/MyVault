@@ -1,9 +1,10 @@
 from datetime import UTC, date, datetime
 from decimal import Decimal
+from hashlib import sha256
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
-from pydantic import BaseModel, ConfigDict, Field
+from fastapi import APIRouter, Depends, HTTPException, Response, UploadFile, status
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import DataError
@@ -36,6 +37,7 @@ class InvestmentActivityRead(BaseModel):
     ticker: str | None
     activity_type: str
     quantity: Decimal | None
+    quantity_multiplier: Decimal | None
     price_per_share: Decimal | None
     total_amount: Decimal
     currency: str
@@ -44,6 +46,17 @@ class InvestmentActivityRead(BaseModel):
 
 class InvestmentPriceUpdate(BaseModel):
     price: Decimal = Field(gt=0)
+
+
+class ShareAdjustmentCreate(BaseModel):
+    multiplier: Decimal = Field(gt=0, max_digits=16, decimal_places=8)
+
+    @field_validator("multiplier")
+    @classmethod
+    def reject_no_change(cls, value: Decimal) -> Decimal:
+        if value == 1:
+            raise ValueError("Multiplier must change the share quantity")
+        return value
 
 
 class InvestmentPriceRead(BaseModel):
@@ -210,6 +223,93 @@ def get_investment_summary(
             position_read.price_quoted_at = price.quoted_at
         position_reads.append(position_read)
     return InvestmentSummaryRead(positions=position_reads, currencies=currencies)
+
+
+@router.put(
+    "/accounts/{account_id}/investment-share-adjustments/{ticker}/{effective_date}",
+    response_model=InvestmentActivityRead,
+    status_code=status.HTTP_201_CREATED,
+    responses={200: {"model": InvestmentActivityRead}},
+)
+def record_share_adjustment(
+    account_id: int,
+    ticker: str,
+    effective_date: date,
+    adjustment: ShareAdjustmentCreate,
+    response: Response,
+    session: Annotated[Session, Depends(get_session)],
+) -> InvestmentActivity:
+    account = session.scalar(
+        select(Account).where(Account.id == account_id).with_for_update()
+    )
+    if account is None:
+        raise HTTPException(status_code=404, detail="Account not found")
+    if effective_date > datetime.now(UTC).date():
+        raise HTTPException(
+            status_code=422, detail="Share adjustment date cannot be in the future"
+        )
+
+    normalized_ticker = ticker.strip().upper()
+    activities = list(
+        session.scalars(
+            select(InvestmentActivity).where(
+                InvestmentActivity.account_id == account_id,
+                InvestmentActivity.ticker == normalized_ticker,
+            )
+        )
+    )
+    currencies = {activity.currency for activity in activities}
+    if not currencies:
+        raise HTTPException(status_code=404, detail="Ticker not found")
+    if len(currencies) != 1:
+        raise HTTPException(status_code=409, detail="Ticker uses multiple currencies")
+
+    fingerprint = sha256(
+        f"share-adjustment:{normalized_ticker}:{effective_date.isoformat()}".encode(),
+        usedforsecurity=False,
+    ).hexdigest()
+    existing = next(
+        (
+            activity
+            for activity in activities
+            if activity.import_fingerprint == fingerprint
+        ),
+        None,
+    )
+    if existing is not None:
+        if existing.quantity_multiplier != adjustment.multiplier:
+            raise HTTPException(
+                status_code=409,
+                detail="A different share adjustment is already recorded for this date",
+            )
+        response.status_code = status.HTTP_200_OK
+        return existing
+
+    activity = InvestmentActivity(
+        account_id=account_id,
+        import_fingerprint=fingerprint,
+        occurred_at=datetime.combine(effective_date, datetime.min.time(), tzinfo=UTC),
+        ticker=normalized_ticker,
+        activity_type="SHARE ADJUSTMENT",
+        quantity=None,
+        quantity_multiplier=adjustment.multiplier,
+        price_per_share=None,
+        total_amount=Decimal(0),
+        currency=currencies.pop(),
+        fx_rate=Decimal(1),
+    )
+    try:
+        calculate_investment_summary([*activities, activity], current_prices={})
+    except ValueError as error:
+        raise HTTPException(
+            status_code=422,
+            detail="Share adjustment is incompatible with the investment history",
+        ) from error
+
+    session.add(activity)
+    session.commit()
+    session.refresh(activity)
+    return activity
 
 
 @router.put(
