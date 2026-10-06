@@ -39,7 +39,7 @@ class InvestmentCurrencySummary:
 @dataclass
 class _Lot:
     quantity: Decimal
-    unit_cost: Decimal
+    remaining_cost: Decimal
 
 
 @dataclass
@@ -75,7 +75,11 @@ def calculate_investment_summary(
     states: dict[str, _PositionState] = {}
     ordered_activities = sorted(
         activities,
-        key=lambda activity: (activity.occurred_at, activity.id or 0),
+        key=lambda activity: (
+            activity.occurred_at,
+            0 if activity.activity_type == "SHARE ADJUSTMENT" else 1,
+            activity.id or 0,
+        ),
     )
 
     for activity in ordered_activities:
@@ -91,7 +95,7 @@ def calculate_investment_summary(
             state.lots.append(
                 _Lot(
                     quantity=activity.quantity,
-                    unit_cost=activity.total_amount / activity.quantity,
+                    remaining_cost=activity.total_amount,
                 )
             )
         elif activity.activity_type == "SELL - MARKET":
@@ -104,7 +108,9 @@ def calculate_investment_summary(
             while quantity_to_sell > 0 and state.lots:
                 lot = state.lots[0]
                 consumed_quantity = min(quantity_to_sell, lot.quantity)
-                sold_cost += consumed_quantity * lot.unit_cost
+                consumed_cost = lot.remaining_cost * (consumed_quantity / lot.quantity)
+                sold_cost += consumed_cost
+                lot.remaining_cost -= consumed_cost
                 lot.quantity -= consumed_quantity
                 quantity_to_sell -= consumed_quantity
 
@@ -115,6 +121,19 @@ def calculate_investment_summary(
                 raise ValueError("Sell quantity exceeds available position")
 
             state.realized_pl += activity.total_amount - sold_cost
+        elif activity.activity_type == "SHARE ADJUSTMENT":
+            multiplier = activity.quantity_multiplier
+            if (
+                multiplier is None
+                or not multiplier.is_finite()
+                or multiplier <= 0
+                or multiplier == 1
+            ):
+                raise ValueError("Invalid share adjustment multiplier")
+            if not state.lots:
+                raise ValueError("Share adjustment requires an open position")
+            for lot in state.lots:
+                lot.quantity *= multiplier
         elif activity.activity_type == "DIVIDEND":
             state.dividends += activity.total_amount
         else:
@@ -125,7 +144,7 @@ def calculate_investment_summary(
     for ticker, state in sorted(states.items()):
         quantity = sum((lot.quantity for lot in state.lots), start=ZERO)
         remaining_cost = sum(
-            (lot.quantity * lot.unit_cost for lot in state.lots),
+            (lot.remaining_cost for lot in state.lots),
             start=ZERO,
         )
         current_price = current_prices.get(ticker)
