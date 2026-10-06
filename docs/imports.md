@@ -9,6 +9,17 @@ In **Transactions**, expand **Import transactions** and upload an Ibercaja XLSX
 export. MyVault reports new transactions and duplicates skipped. Existing data
 is preserved when the workbook is invalid.
 
+Descriptions and bank concepts are trimmed before duplicate detection, including
+when matching older imported records. Leading or trailing whitespace changes
+do not create a second copy of the same transaction.
+
+Use **Delete** on a transaction row to remove a wrong entry, or **Clear transaction
+history** to replace the selected account's statement across all dates and filters.
+Clearing bank history resets its last-known balance but preserves investments and
+other accounts. Deleting an individual entry keeps the reported balance while
+other bank entries remain; deleting the last entry resets it. Reimporting a
+statement restores its transactions and balance snapshot.
+
 ## Revolut
 
 In **Investments**, expand **Import investment activity**, choose **Revolut CSV**,
@@ -21,6 +32,20 @@ Date,Ticker,Type,Quantity,Price per share,Total Amount,Currency,FX Rate
 The importer supports market purchases, market sales, dividends, cash top-ups,
 and withdrawals. Include your first purchases in the initial import; overlapping
 exports are safe when transaction details remain unchanged.
+
+## Deleting and replacing investment history
+
+Use **Delete** on an activity row to remove an incorrect entry. MyVault rejects
+deletion if the remaining history cannot be calculated, such as when a later
+sale or share adjustment needs that purchase. Importing the original report can
+restore a deleted activity.
+
+To replace a CSV or XML history, use **Clear investment history**, confirm the
+selected account, and then import the replacement file. This removes all of
+that account's investment activity and saved prices, including manual share
+adjustments. Bank transactions and other accounts are preserved. The replacement
+must include the necessary purchase history; record manual share adjustments
+again separately.
 
 ## IBKR investment imports
 
@@ -121,4 +146,3 @@ mergers, spin-offs, and automatic corporate-action imports are not included.
 Private reconciliation backups in `backend/.private-reconciliation/` are excluded
 from Git and Docker builds. The migration refuses to remove the multiplier
 column while share-adjustment events exist.
-
