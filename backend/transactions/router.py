@@ -4,14 +4,17 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from database import get_session
 from models import Account, Transaction
 from schemas import ImportResult
 from transactions.categorization import suggest_transaction_category
-from transactions.ibercaja_importer import parse_ibercaja_xlsx
+from transactions.ibercaja_importer import (
+    ibercaja_transaction_fingerprint,
+    parse_ibercaja_xlsx,
+)
 
 router = APIRouter(tags=["transactions"])
 
@@ -95,6 +98,56 @@ def list_transactions(
     return list(transactions)
 
 
+@router.delete(
+    "/accounts/{account_id}/transactions/{transaction_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_transaction(
+    account_id: int,
+    transaction_id: int,
+    session: Annotated[Session, Depends(get_session)],
+) -> None:
+    account = session.scalar(
+        select(Account).where(Account.id == account_id).with_for_update()
+    )
+    if account is None:
+        raise HTTPException(status_code=404, detail="Account not found")
+    transaction = session.get(Transaction, transaction_id)
+    if transaction is None or transaction.account_id != account_id:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+    remaining = session.scalar(
+        select(Transaction.id)
+        .where(
+            Transaction.account_id == account_id,
+            Transaction.id != transaction_id,
+        )
+        .limit(1)
+    )
+    session.delete(transaction)
+    if remaining is None:
+        account.current_balance = None
+        account.balance_date = None
+    session.commit()
+
+
+@router.delete(
+    "/accounts/{account_id}/transactions", status_code=status.HTTP_204_NO_CONTENT
+)
+def clear_transaction_history(
+    account_id: int,
+    session: Annotated[Session, Depends(get_session)],
+) -> None:
+    account = session.scalar(
+        select(Account).where(Account.id == account_id).with_for_update()
+    )
+    if account is None:
+        raise HTTPException(status_code=404, detail="Account not found")
+    session.execute(delete(Transaction).where(Transaction.account_id == account_id))
+    account.current_balance = None
+    account.balance_date = None
+    session.commit()
+
+
 @router.patch(
     "/transactions/{transaction_id}/category",
     response_model=TransactionRead,
@@ -129,7 +182,9 @@ def import_ibercaja_transactions(
     file: UploadFile,
     session: Annotated[Session, Depends(get_session)],
 ) -> IbercajaImportResult:
-    account = session.get(Account, account_id)
+    account = session.scalar(
+        select(Account).where(Account.id == account_id).with_for_update()
+    )
 
     if account is None:
         raise HTTPException(
@@ -153,18 +208,20 @@ def import_ibercaja_transactions(
             account.current_balance = latest_transaction["balance_after"]
             account.balance_date = latest_date
 
-    parsed_fingerprints = {
-        transaction_data["import_fingerprint"]
-        for transaction_data in parsed_transactions
+    # Include legacy rows whose fingerprints were made before text was trimmed.
+    existing_fingerprints = {
+        ibercaja_transaction_fingerprint(
+            operation_date=transaction.operation_date,
+            value_date=transaction.value_date,
+            amount=transaction.amount,
+            balance_after=transaction.balance_after,
+            bank_concept=transaction.bank_concept,
+            description=transaction.description,
+        )
+        for transaction in session.scalars(
+            select(Transaction).where(Transaction.account_id == account_id)
+        )
     }
-    existing_fingerprints = set(
-        session.scalars(
-            select(Transaction.import_fingerprint).where(
-                Transaction.account_id == account_id,
-                Transaction.import_fingerprint.in_(parsed_fingerprints),
-            )
-        ).all()
-    )
 
     imported = 0
 
