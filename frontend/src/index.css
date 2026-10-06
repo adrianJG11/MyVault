@@ -1081,6 +1081,40 @@ h1 {
   font-weight: 600;
 }
 
+.button-danger {
+  padding: 0.55rem 0.85rem;
+  border: 1px solid var(--money-out);
+  border-radius: 6px;
+  color: var(--money-out);
+  background: var(--surface-raised);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.button-danger:hover:not(:disabled) {
+  background: var(--surface);
+}
+
+.button-danger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.history-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin: 1rem 0;
+}
+
+.history-actions p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
 .category-select {
   width: 100%;
   min-width: 135px;
@@ -1293,7 +1327,7 @@ tbody tr:hover {
     grid-row: 2;
   }
 
-  .transaction-table td:last-child {
+  .transaction-table td:nth-child(4) {
     grid-column: 2;
     grid-row: 1;
   }
@@ -1301,6 +1335,13 @@ tbody tr:hover {
   .transaction-table .category-select {
     width: 135px;
     min-width: 0;
+  }
+
+  .transaction-table .transaction-actions {
+    grid-column: 1 / -1;
+    grid-row: 3;
+    margin-top: 0.5rem;
+    text-align: right;
   }
 
   .portfolio-allocation {
@@ -1384,6 +1425,13 @@ tbody tr:hover {
     content: attr(data-label);
     color: var(--muted);
     font-size: 0.7rem;
+  }
+
+  .investment-activity-table .activity-actions {
+    grid-column: 1 / -1;
+    grid-row: 4;
+    margin-top: 0.5rem;
+    text-align: right;
   }
 }
 

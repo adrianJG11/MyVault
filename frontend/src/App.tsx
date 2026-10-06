@@ -160,14 +160,16 @@ function App() {
             <TransactionsPanel
               key={`transactions-${selectedAccount.id}`}
               accountId={selectedAccount.id}
+              accountName={selectedAccount.name}
               currency={selectedAccount.currency}
-              onImportComplete={refreshAccounts}
+              onAccountUpdate={refreshAccounts}
             />
           </div>
           <div hidden={activeTab !== 'investments'}>
             <InvestmentsPanel
               key={`investments-${selectedAccount.id}`}
               accountId={selectedAccount.id}
+              accountName={selectedAccount.name}
             />
           </div>
         </>
