@@ -5,6 +5,7 @@ export type InvestmentActivity = {
   ticker: string | null
   activity_type: string
   quantity: string | null
+  quantity_multiplier: string | null
   price_per_share: string | null
   total_amount: string
   currency: string

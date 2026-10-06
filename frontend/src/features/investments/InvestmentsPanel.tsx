@@ -624,7 +624,7 @@ export function InvestmentsPanel({ accountId }: InvestmentsPanelProps) {
           >
             <table>
               <caption className="sr-only">
-                Imported investment activity, with amounts in each trade's
+                Investment activity and share adjustments, with amounts in each
                 currency
               </caption>
               <thead>
@@ -652,7 +652,9 @@ export function InvestmentsPanel({ accountId }: InvestmentsPanelProps) {
                       {activity.ticker ?? '—'}
                     </td>
                     <td data-label="Quantity">
-                      {formatQuantity(activity.quantity)}
+                      {activity.activity_type === 'SHARE ADJUSTMENT'
+                        ? `×${formatQuantity(activity.quantity_multiplier)} shares`
+                        : formatQuantity(activity.quantity)}
                     </td>
                     <td data-label="Price">
                       {activity.price_per_share === null
@@ -663,10 +665,14 @@ export function InvestmentsPanel({ accountId }: InvestmentsPanelProps) {
                           )}
                     </td>
                     <td className={amountClass(activity.total_amount)}>
-                      {formatMoney(activity.total_amount, activity.currency)}
+                      {activity.activity_type === 'SHARE ADJUSTMENT'
+                        ? '—'
+                        : formatMoney(activity.total_amount, activity.currency)}
                     </td>
                     <td data-label="FX rate">
-                      {formatQuantity(activity.fx_rate)}
+                      {activity.activity_type === 'SHARE ADJUSTMENT'
+                        ? '—'
+                        : formatQuantity(activity.fx_rate)}
                     </td>
                   </tr>
                 ))}

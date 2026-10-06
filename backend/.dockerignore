@@ -9,3 +9,4 @@ __pycache__/
 *.xlsx
 ibkr_report.xml
 .ibkr-report-*
+.private-reconciliation/

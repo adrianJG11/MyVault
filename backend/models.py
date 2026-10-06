@@ -1,7 +1,14 @@
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import DateTime, ForeignKey, Numeric, String, UniqueConstraint
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Numeric,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -50,6 +57,14 @@ class InvestmentActivity(Base):
             "import_fingerprint",
             name="uq_investment_activities_account_import_fingerprint",
         ),
+        CheckConstraint(
+            "(activity_type = 'SHARE ADJUSTMENT' AND quantity_multiplier IS NOT NULL "
+            "AND quantity_multiplier > 0 AND quantity_multiplier <> 1 "
+            "AND quantity_multiplier <> 'NaN'::numeric "
+            "AND quantity IS NULL AND price_per_share IS NULL AND total_amount = 0) "
+            "OR (activity_type <> 'SHARE ADJUSTMENT' AND quantity_multiplier IS NULL)",
+            name="ck_investment_activities_share_adjustment",
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -59,6 +74,7 @@ class InvestmentActivity(Base):
     ticker: Mapped[str | None] = mapped_column(String(20))
     activity_type: Mapped[str] = mapped_column(String(30))
     quantity: Mapped[Decimal | None] = mapped_column(Numeric(24, 12))
+    quantity_multiplier: Mapped[Decimal | None] = mapped_column(Numeric(16, 8))
     price_per_share: Mapped[Decimal | None] = mapped_column(Numeric(24, 8))
     total_amount: Mapped[Decimal] = mapped_column(Numeric(24, 8))
     currency: Mapped[str] = mapped_column(String(3))

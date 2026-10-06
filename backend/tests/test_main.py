@@ -5,9 +5,12 @@ from io import BytesIO
 from xml.etree import ElementTree
 
 import pytest
+from alembic import command
+from alembic.config import Config
 from fastapi.testclient import TestClient
 from openpyxl import Workbook, load_workbook
 from sqlalchemy import delete
+from sqlalchemy.exc import IntegrityError
 
 from database import SessionFactory, engine
 from investments import router as investments_router
@@ -1794,3 +1797,243 @@ def test_newer_ibkr_report_clears_previous_yahoo_quote_timestamp(
     assert position["price_source"] == "ibkr"
     assert position["price_quoted_at"] is None
     assert Decimal(position["current_price"]) == Decimal(21)
+
+
+@pytest.fixture
+def share_adjustment_account(clean_database: None) -> int:
+    response = client.post(
+        "/accounts",
+        json={
+            "name": "Test investments",
+            "bank_name": "Test broker",
+            "currency": "USD",
+        },
+    )
+    assert response.status_code == 201
+    account_id = response.json()["id"]
+    imported = client.post(
+        f"/accounts/{account_id}/imports/revolut-investments",
+        files={
+            "file": ("synthetic.csv", _create_fake_revolut_investment_csv(), "text/csv")
+        },
+    )
+    assert imported.status_code == 201
+    return account_id
+
+
+def test_share_adjustment_is_recorded_once_and_survives_reimport(
+    share_adjustment_account: int,
+) -> None:
+    account_id = share_adjustment_account
+    response = client.put(
+        f"/accounts/{account_id}/investment-share-adjustments/fake/2026-01-20",
+        json={"multiplier": "1.1"},
+    )
+    assert response.status_code == 201
+    assert response.json()["activity_type"] == "SHARE ADJUSTMENT"
+    assert response.json()["quantity_multiplier"] == "1.10000000"
+    assert response.json()["quantity"] is None
+    assert Decimal(response.json()["total_amount"]) == 0
+    repeated = client.put(
+        f"/accounts/{account_id}/investment-share-adjustments/FAKE/2026-01-20",
+        json={"multiplier": "1.10"},
+    )
+    assert repeated.status_code == 200
+    assert repeated.json()["id"] == response.json()["id"]
+    imported = client.post(
+        f"/accounts/{account_id}/imports/revolut-investments",
+        files={
+            "file": ("synthetic.csv", _create_fake_revolut_investment_csv(), "text/csv")
+        },
+    )
+    assert imported.json() == {"imported": 0}
+    price = client.put(
+        f"/accounts/{account_id}/investment-prices/FAKE",
+        json={"price": "100"},
+    )
+    assert price.status_code == 200
+    summary = client.get("/investment-summary", params={"account_id": account_id})
+    assert summary.status_code == 200
+    position = summary.json()["positions"][0]
+    assert Decimal(position["quantity"]) == Decimal("0.55")
+    assert Decimal(position["remaining_cost"]) == Decimal(50)
+    assert Decimal(position["market_value"]) == Decimal(55)
+    assert Decimal(position["unrealized_pl"]) == Decimal(5)
+    activities = client.get(
+        "/investment-activities", params={"account_id": account_id}
+    ).json()
+    assert len(activities) == 3
+    purchase = next(
+        activity
+        for activity in activities
+        if activity["activity_type"] == "BUY - MARKET"
+    )
+    assert Decimal(purchase["quantity"]) == Decimal("0.5")
+
+
+def test_share_adjustment_rejects_conflicting_multiplier(
+    share_adjustment_account: int,
+) -> None:
+    url = f"/accounts/{share_adjustment_account}/investment-share-adjustments/FAKE/2026-01-20"
+    assert client.put(url, json={"multiplier": "1.1"}).status_code == 201
+    response = client.put(url, json={"multiplier": "2"})
+    assert response.status_code == 409
+    assert response.json() == {
+        "detail": "A different share adjustment is already recorded for this date"
+    }
+    activities = client.get(
+        "/investment-activities", params={"account_id": share_adjustment_account}
+    ).json()
+    assert len(activities) == 3
+
+
+@pytest.mark.parametrize(
+    "multiplier", ["0", "-1", "1", "NaN", "Infinity", "0.000000001", "100000000"]
+)
+def test_share_adjustment_rejects_invalid_input(
+    share_adjustment_account: int, multiplier: str
+) -> None:
+    response = client.put(
+        f"/accounts/{share_adjustment_account}/investment-share-adjustments/FAKE/2026-01-20",
+        json={"multiplier": multiplier},
+    )
+    assert response.status_code == 422
+    activities = client.get(
+        "/investment-activities", params={"account_id": share_adjustment_account}
+    ).json()
+    assert len(activities) == 2
+
+
+@pytest.mark.parametrize(
+    "effective_date",
+    ["2026-01-01", (datetime.now(UTC).date() + timedelta(days=1)).isoformat()],
+)
+def test_share_adjustment_rejects_invalid_date(
+    share_adjustment_account: int, effective_date: str
+) -> None:
+    response = client.put(
+        f"/accounts/{share_adjustment_account}/investment-share-adjustments/FAKE/{effective_date}",
+        json={"multiplier": "1.1"},
+    )
+    assert response.status_code == 422
+    activities = client.get(
+        "/investment-activities", params={"account_id": share_adjustment_account}
+    ).json()
+    assert len(activities) == 2
+
+
+def test_share_adjustment_rejects_unknown_account_and_ticker(
+    share_adjustment_account: int,
+) -> None:
+    for account_id, ticker in [(0, "FAKE"), (share_adjustment_account, "UNKNOWN")]:
+        response = client.put(
+            f"/accounts/{account_id}/investment-share-adjustments/{ticker}/2026-01-20",
+            json={"multiplier": "1.1"},
+        )
+        assert response.status_code == 404
+
+
+def test_share_adjustment_only_changes_selected_account(
+    share_adjustment_account: int,
+) -> None:
+    other = client.post(
+        "/accounts",
+        json={
+            "name": "Other investments",
+            "bank_name": "Test broker",
+            "currency": "USD",
+        },
+    ).json()["id"]
+    imported = client.post(
+        f"/accounts/{other}/imports/revolut-investments",
+        files={
+            "file": ("synthetic.csv", _create_fake_revolut_investment_csv(), "text/csv")
+        },
+    )
+    assert imported.status_code == 201
+    response = client.put(
+        f"/accounts/{share_adjustment_account}/investment-share-adjustments/FAKE/2026-01-20",
+        json={"multiplier": "1.1"},
+    )
+    assert response.status_code == 201
+    summary = client.get("/investment-summary", params={"account_id": other}).json()
+    assert Decimal(summary["positions"][0]["quantity"]) == Decimal("0.5")
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"quantity_multiplier": None},
+        {"quantity_multiplier": Decimal("NaN")},
+        {"quantity": Decimal(1)},
+        {"total_amount": Decimal(1)},
+        {"activity_type": "BUY - MARKET"},
+    ],
+)
+def test_database_rejects_malformed_share_adjustments(
+    share_adjustment_account: int, overrides: dict
+) -> None:
+    values = {
+        "account_id": share_adjustment_account,
+        "import_fingerprint": "a" * 64,
+        "occurred_at": datetime(2026, 1, 20, tzinfo=UTC),
+        "ticker": "FAKE",
+        "activity_type": "SHARE ADJUSTMENT",
+        "quantity": None,
+        "quantity_multiplier": Decimal("1.1"),
+        "price_per_share": None,
+        "total_amount": Decimal(0),
+        "currency": "USD",
+        "fx_rate": Decimal(1),
+    }
+    values.update(overrides)
+    with pytest.raises(IntegrityError), SessionFactory.begin() as session:
+        session.add(InvestmentActivity(**values))
+
+
+def test_reverse_adjustment_rejects_history_with_too_many_shares_sold(
+    share_adjustment_account: int,
+) -> None:
+    csv_contents = (
+        b"Date,Ticker,Type,Quantity,Price per share,Total Amount,Currency,FX Rate\n"
+        b"2026-01-25T12:00:00Z,FAKE,SELL - MARKET,0.4,USD 100,USD 40,USD,1\n"
+    )
+    imported = client.post(
+        f"/accounts/{share_adjustment_account}/imports/revolut-investments",
+        files={"file": ("synthetic.csv", csv_contents, "text/csv")},
+    )
+    assert imported.status_code == 201
+    response = client.put(
+        f"/accounts/{share_adjustment_account}/investment-share-adjustments/FAKE/2026-01-20",
+        json={"multiplier": "0.5"},
+    )
+    assert response.status_code == 422
+    summary = client.get(
+        "/investment-summary", params={"account_id": share_adjustment_account}
+    )
+    assert summary.status_code == 200
+    assert Decimal(summary.json()["positions"][0]["quantity"]) == Decimal("0.1")
+
+
+def test_migration_cannot_discard_recorded_share_adjustments(
+    share_adjustment_account: int,
+) -> None:
+    response = client.put(
+        f"/accounts/{share_adjustment_account}/investment-share-adjustments/FAKE/2026-01-20",
+        json={"multiplier": "1.1"},
+    )
+    assert response.status_code == 201
+    with pytest.raises(RuntimeError, match="Cannot downgrade"):
+        command.downgrade(Config("alembic.ini"), "a4c8e91d6b20")
+    activities = client.get(
+        "/investment-activities", params={"account_id": share_adjustment_account}
+    ).json()
+    assert len(activities) == 3
+    assert (
+        next(
+            activity["quantity_multiplier"]
+            for activity in activities
+            if activity["activity_type"] == "SHARE ADJUSTMENT"
+        )
+        == "1.10000000"
+    )

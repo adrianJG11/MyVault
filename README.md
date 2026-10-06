@@ -239,6 +239,34 @@ file. To import this downloaded report with curl, use
 frontend, select your IBKR account, open the Investments tab, expand
 **Import investment activity**, choose **IBKR XML**, and upload the report.
 
+## Investment share adjustments
+
+Record a verified bonus-share or split event through
+`PUT /accounts/{account_id}/investment-share-adjustments/{ticker}/{effective_date}`
+in the local API documentation. Use a `YYYY-MM-DD` date and a body such as:
+
+```json
+{"multiplier": "1.1"}
+```
+
+For example, `1.1` means 10% more shares, `2` means twice as many, and `0.5`
+means half as many. The event changes the open FIFO lots at the start of that
+date in UTC, before trades at the same timestamp. The original purchases remain
+unchanged, total cost is preserved, and later sales consume the adjusted lots.
+The activity table displays the multiplier without a cash movement or FX rate.
+
+Repeating the same account, ticker, date, and multiplier returns the existing
+event. A different multiplier for that date is rejected. Future dates, events
+without an open position, and adjustments incompatible with later sales are
+also rejected. Broker imports continue to skip previously imported trades;
+these adjustment events are recorded manually, not inferred from a CSV or XML.
+
+This flow handles exact quantity multipliers. Cash in lieu of fractional shares,
+mergers, spin-offs, and automatic corporate-action imports are not included.
+Private reconciliation backups in `backend/.private-reconciliation/` are excluded
+from Git and Docker builds. The migration refuses to remove the multiplier
+column while share-adjustment events exist.
+
 ## Database migrations
 
 Run migrations whenever the image contains new Alembic migrations:
