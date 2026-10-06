@@ -15,6 +15,7 @@ wheels/
 *.xlsx
 ibkr_report.xml
 .ibkr-report-*
+backend/.private-reconciliation/
 
 # Editor-specific files
 .vscode/
