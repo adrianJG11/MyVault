@@ -5,7 +5,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Response, UploadFile, status
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import DataError
 from sqlalchemy.orm import Session
@@ -178,6 +178,71 @@ def list_investment_activities(
 
     activities = session.scalars(statement).all()
     return list(activities)
+
+
+@router.delete(
+    "/accounts/{account_id}/investment-activities/{activity_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_investment_activity(
+    account_id: int,
+    activity_id: int,
+    session: Annotated[Session, Depends(get_session)],
+) -> None:
+    account = session.scalar(
+        select(Account).where(Account.id == account_id).with_for_update()
+    )
+    if account is None:
+        raise HTTPException(status_code=404, detail="Account not found")
+    activity = session.get(InvestmentActivity, activity_id)
+    if activity is None or activity.account_id != account_id:
+        raise HTTPException(status_code=404, detail="Investment activity not found")
+    remaining = list(
+        session.scalars(
+            select(InvestmentActivity).where(
+                InvestmentActivity.account_id == account_id,
+                InvestmentActivity.id != activity_id,
+            )
+        )
+    )
+    try:
+        calculate_investment_summary(remaining, current_prices={})
+    except ValueError as error:
+        raise HTTPException(
+            status_code=409, detail="Deletion would leave an invalid investment history"
+        ) from error
+    session.delete(activity)
+    if activity.ticker is not None and not any(
+        row.ticker == activity.ticker for row in remaining
+    ):
+        session.execute(
+            delete(InvestmentPrice).where(
+                InvestmentPrice.account_id == account_id,
+                InvestmentPrice.ticker == activity.ticker,
+            )
+        )
+    session.commit()
+
+
+@router.delete(
+    "/accounts/{account_id}/investments", status_code=status.HTTP_204_NO_CONTENT
+)
+def clear_investment_history(
+    account_id: int,
+    session: Annotated[Session, Depends(get_session)],
+) -> None:
+    account = session.scalar(
+        select(Account).where(Account.id == account_id).with_for_update()
+    )
+    if account is None:
+        raise HTTPException(status_code=404, detail="Account not found")
+    session.execute(
+        delete(InvestmentActivity).where(InvestmentActivity.account_id == account_id)
+    )
+    session.execute(
+        delete(InvestmentPrice).where(InvestmentPrice.account_id == account_id)
+    )
+    session.commit()
 
 
 @router.get("/investment-summary", response_model=InvestmentSummaryRead)

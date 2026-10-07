@@ -8,6 +8,8 @@ import {
 } from 'react'
 
 import {
+  clearInvestmentHistory,
+  deleteInvestmentActivity,
   fetchInvestmentActivities,
   fetchInvestmentSummary,
   importInvestments,
@@ -80,9 +82,10 @@ async function fetchInvestmentData(accountId: number) {
 
 type InvestmentsPanelProps = {
   accountId: number
+  accountName: string
 }
 
-export function InvestmentsPanel({ accountId }: InvestmentsPanelProps) {
+export function InvestmentsPanel({ accountId, accountName }: InvestmentsPanelProps) {
   const [activities, setActivities] = useState<InvestmentActivity[]>([])
   const [summary, setSummary] = useState<InvestmentSummary>({
     positions: [],
@@ -108,6 +111,14 @@ export function InvestmentsPanel({ accountId }: InvestmentsPanelProps) {
     tone: 'success' | 'error'
   } | null>(null)
   const [showClosedPositions, setShowClosedPositions] = useState(false)
+  const [deletingActivityId, setDeletingActivityId] = useState<number | null>(null)
+  const [isClearingHistory, setIsClearingHistory] = useState(false)
+  const [deletionMessage, setDeletionMessage] = useState<{
+    text: string
+    tone: 'success' | 'warning' | 'error'
+  } | null>(null)
+  const isDeleting = deletingActivityId !== null || isClearingHistory
+  const isMutating = isDeleting || isImporting || isRefreshingPrices || savingPriceTicker !== null
 
   const totalPages = Math.max(
     1,
@@ -152,6 +163,7 @@ export function InvestmentsPanel({ accountId }: InvestmentsPanelProps) {
     setIsImporting(true)
     setImportMessage(null)
     setPriceMessage(null)
+    setDeletionMessage(null)
 
     try {
       const result = await importInvestments(accountId, file, broker)
@@ -248,6 +260,66 @@ export function InvestmentsPanel({ accountId }: InvestmentsPanelProps) {
     }
   }
 
+  async function handleActivityDelete(activity: InvestmentActivity) {
+    if (!window.confirm(
+      `Delete ${activity.activity_type.toLowerCase()} for ${activity.ticker ?? 'this account'} on ${dateTimeFormatter.format(new Date(activity.occurred_at))} in "${accountName}"?\n\nThis removes the record from MyVault. Importing its original report can restore it.`,
+    )) return
+    setDeletingActivityId(activity.id)
+    setDeletionMessage(null)
+    setImportMessage(null)
+    setPriceMessage(null)
+    try {
+      await deleteInvestmentActivity(accountId, activity.id)
+      setDeletionMessage({ text: 'Investment activity deleted.', tone: 'success' })
+      try {
+        const data = await fetchInvestmentData(accountId)
+        setActivities(data.activities)
+        setSummary(data.summary)
+        setPriceDrafts(priceDraftsFrom(data.summary))
+        setCurrentPage(1)
+        setError(null)
+      } catch {
+        setDeletionMessage({
+          text: 'Activity deleted, but the view could not refresh. Reload the page.',
+          tone: 'warning',
+        })
+      }
+    } catch (error) {
+      setDeletionMessage({
+        text: error instanceof Error ? error.message : 'Could not confirm deletion. Reload the page.',
+        tone: 'error',
+      })
+    } finally {
+      setDeletingActivityId(null)
+    }
+  }
+
+  async function handleHistoryClear() {
+    if (!window.confirm(
+      `Clear all investment history for "${accountName}"?\n\nThis deletes trades, dividends, cash movements, manual share adjustments, and saved prices. Other accounts and bank transactions are kept.\n\nImport complete trade history again afterward. Manual share adjustments must be recorded again separately.`,
+    )) return
+    setIsClearingHistory(true)
+    setDeletionMessage(null)
+    setImportMessage(null)
+    setPriceMessage(null)
+    try {
+      await clearInvestmentHistory(accountId)
+      setActivities([])
+      setSummary({ positions: [], currencies: [] })
+      setPriceDrafts({})
+      setCurrentPage(1)
+      setError(null)
+      setDeletionMessage({ text: 'Investment history and saved prices cleared for this account.', tone: 'success' })
+    } catch (error) {
+      setDeletionMessage({
+        text: error instanceof Error ? error.message : 'Could not confirm the reset. Reload the page.',
+        tone: 'error',
+      })
+    } finally {
+      setIsClearingHistory(false)
+    }
+  }
+
   let content: ReactNode
 
   if (isLoading) {
@@ -279,7 +351,7 @@ export function InvestmentsPanel({ accountId }: InvestmentsPanelProps) {
               <div className="investment-actions">
                 <button
                   type="button"
-                  disabled={isRefreshingPrices}
+                  disabled={isMutating}
                   onClick={() => void handlePriceRefresh()}
                 >
                   {isRefreshingPrices
@@ -577,7 +649,7 @@ export function InvestmentsPanel({ accountId }: InvestmentsPanelProps) {
                         />
                         <button
                           type="submit"
-                          disabled={savingPriceTicker === position.ticker}
+                          disabled={isMutating}
                         >
                           {savingPriceTicker === position.ticker
                             ? 'Saving...'
@@ -636,6 +708,7 @@ export function InvestmentsPanel({ accountId }: InvestmentsPanelProps) {
                   <th scope="col">Price</th>
                   <th scope="col">Total</th>
                   <th scope="col">FX rate</th>
+                  <th scope="col">Actions</th>
                 </tr>
               </thead>
 
@@ -673,6 +746,17 @@ export function InvestmentsPanel({ accountId }: InvestmentsPanelProps) {
                       {activity.activity_type === 'SHARE ADJUSTMENT'
                         ? '—'
                         : formatQuantity(activity.fx_rate)}
+                    </td>
+                    <td className="activity-actions">
+                      <button
+                        type="button"
+                        className="button-danger"
+                        aria-label={`Delete ${activity.activity_type.toLowerCase()} for ${activity.ticker ?? 'this account'} on ${dateTimeFormatter.format(new Date(activity.occurred_at))}`}
+                        disabled={isMutating}
+                        onClick={() => void handleActivityDelete(activity)}
+                      >
+                        {deletingActivityId === activity.id ? 'Deleting...' : 'Delete'}
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -767,13 +851,31 @@ export function InvestmentsPanel({ accountId }: InvestmentsPanelProps) {
             />
             <button
               type="submit"
-              disabled={selectedFile === null || isImporting}
+              disabled={selectedFile === null || isMutating}
             >
               {isImporting ? 'Importing...' : 'Import'}
             </button>
           </div>
         </form>
       </details>
+
+      <div className="history-actions">
+        <p>Start again with a new export by clearing this account’s investment history.</p>
+        <button
+          type="button"
+          className="button-danger"
+          disabled={isLoading || isMutating || (activities.length === 0 && !error)}
+          onClick={() => void handleHistoryClear()}
+        >
+          {isClearingHistory ? 'Clearing...' : 'Clear investment history'}
+        </button>
+      </div>
+
+      {deletionMessage && (
+        <p className={`notice notice-${deletionMessage.tone}`} role={deletionMessage.tone === 'error' ? 'alert' : 'status'}>
+          {deletionMessage.text}
+        </p>
+      )}
 
       <p className="investment-price-note">
         Prices are saved snapshots. Supported European Yahoo listings have a

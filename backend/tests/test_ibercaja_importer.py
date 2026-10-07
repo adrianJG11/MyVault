@@ -8,7 +8,19 @@ from openpyxl import Workbook
 from transactions.ibercaja_importer import parse_ibercaja_xlsx
 
 
-def test_parse_ibercaja_xlsx_returns_normalized_transaction(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("concept", "description"),
+    [
+        ("CARD", "FAKE SUPERMARKET"),
+        (" CARD ", " FAKE SUPERMARKET "),
+        ("\tCARD\t", "\tFAKE SUPERMARKET\t"),
+    ],
+)
+def test_parse_ibercaja_xlsx_returns_normalized_transaction(
+    tmp_path: Path,
+    concept: str,
+    description: str,
+) -> None:
     workbook_path = tmp_path / "ibercaja.xlsx"
     workbook = Workbook()
     sheet = workbook.active
@@ -33,8 +45,8 @@ def test_parse_ibercaja_xlsx_returns_normalized_transaction(tmp_path: Path) -> N
         1,
         "17-08-2026",
         "17-08-2026",
-        "CARD",
-        "FAKE SUPERMARKET",
+        concept,
+        description,
         "FAKE123",
         -42.64,
         14897.84,

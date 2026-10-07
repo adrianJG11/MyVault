@@ -2,6 +2,8 @@ import { lazy, Suspense, type SubmitEvent, useEffect, useState } from 'react'
 
 import { TransactionCategorySelect } from './TransactionCategorySelect'
 import {
+  clearTransactionHistory,
+  deleteTransaction,
   fetchTransactions,
   importIbercajaTransactions,
   updateTransactionCategory,
@@ -23,14 +25,16 @@ function formatCategory(category: string) {
 
 type TransactionsPanelProps = {
   accountId: number
+  accountName: string
   currency: string
-  onImportComplete: () => Promise<void>
+  onAccountUpdate: () => Promise<void>
 }
 
 export function TransactionsPanel({
   accountId,
+  accountName,
   currency,
-  onImportComplete,
+  onAccountUpdate,
 }: TransactionsPanelProps) {
   const moneyFormatter = new Intl.NumberFormat('en-GB', {
     style: 'currency',
@@ -46,6 +50,13 @@ export function TransactionsPanel({
     tone: 'success' | 'warning' | 'error'
   } | null>(null)
   const [isImporting, setIsImporting] = useState(false)
+  const [deletingTransactionId, setDeletingTransactionId] = useState<number | null>(null)
+  const [isClearingHistory, setIsClearingHistory] = useState(false)
+  const [deletionMessage, setDeletionMessage] = useState<{
+    text: string
+    tone: 'success' | 'warning' | 'error'
+  } | null>(null)
+  const isDeleting = deletingTransactionId !== null || isClearingHistory
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [monthFilter, setMonthFilter] = useState('')
@@ -170,6 +181,7 @@ export function TransactionsPanel({
     const file = selectedFile
     setIsImporting(true)
     setImportMessage(null)
+    setDeletionMessage(null)
 
     try {
       const result = await importIbercajaTransactions(accountId, file)
@@ -193,7 +205,7 @@ export function TransactionsPanel({
         )
         setTransactions(refreshedTransactions)
         setCurrentPage(1)
-        await onImportComplete()
+      await onAccountUpdate()
       } catch {
         setImportMessage({
           text: `${successMessage} Import completed, but the view could not refresh. Reload the page.`,
@@ -260,6 +272,58 @@ export function TransactionsPanel({
     setDateTo('')
     setCategoryFilter('')
     setDescriptionFilter('')
+  }
+
+  async function handleTransactionDelete(transaction: Transaction) {
+    if (!window.confirm(
+      `Delete "${transaction.description}" on ${formatDate(transaction.operation_date)} from "${accountName}"?\n\nThis removes the record from MyVault. Importing the original statement can restore it.`,
+    )) return
+    setDeletingTransactionId(transaction.id)
+    setDeletionMessage(null)
+    setImportMessage(null)
+    try {
+      await deleteTransaction(accountId, transaction.id)
+      setDeletionMessage({ text: 'Transaction deleted.', tone: 'success' })
+      try {
+        const data = await fetchTransactions(accountId, dateFrom, dateTo, categoryFilter, descriptionFilter)
+        setTransactions(data)
+        setCurrentPage(1)
+        setError(null)
+        await onAccountUpdate()
+      } catch {
+        setDeletionMessage({ text: 'Transaction deleted, but the view could not refresh. Reload the page.', tone: 'warning' })
+      }
+    } catch (error) {
+      setDeletionMessage({ text: error instanceof Error ? error.message : 'Could not confirm deletion. Reload the page.', tone: 'error' })
+    } finally {
+      setDeletingTransactionId(null)
+    }
+  }
+
+  async function handleHistoryClear() {
+    if (!window.confirm(
+      `Clear all transaction history for "${accountName}"?\n\nThis removes every bank transaction across all dates and categories, regardless of filters, and resets the last-known balance. Investments and other accounts are kept.\n\nImport a replacement statement afterward.`,
+    )) return
+    setIsClearingHistory(true)
+    setDeletionMessage(null)
+    setImportMessage(null)
+    try {
+      await clearTransactionHistory(accountId)
+      setTransactions([])
+      setCurrentPage(1)
+      setError(null)
+      setCategoryError(null)
+      setDeletionMessage({ text: 'Transaction history and balance snapshot cleared for this account.', tone: 'success' })
+      try {
+        await onAccountUpdate()
+      } catch {
+        setDeletionMessage({ text: 'History cleared, but the balance could not refresh. Reload the page.', tone: 'warning' })
+      }
+    } catch (error) {
+      setDeletionMessage({ text: error instanceof Error ? error.message : 'Could not confirm the reset. Reload the page.', tone: 'error' })
+    } finally {
+      setIsClearingHistory(false)
+    }
   }
 
   let content
@@ -415,6 +479,7 @@ export function TransactionsPanel({
                   <th scope="col">Description</th>
                   <th scope="col">Category</th>
                   <th scope="col">Amount</th>
+                  <th scope="col">Actions</th>
                 </tr>
               </thead>
 
@@ -440,6 +505,17 @@ export function TransactionsPanel({
                       }
                     >
                       {moneyFormatter.format(Number(transaction.amount))}
+                    </td>
+                    <td className="transaction-actions">
+                      <button
+                        type="button"
+                        className="button-danger"
+                        aria-label={`Delete ${transaction.description} on ${formatDate(transaction.operation_date)}`}
+                        disabled={isDeleting || isImporting}
+                        onClick={() => void handleTransactionDelete(transaction)}
+                      >
+                        {deletingTransactionId === transaction.id ? 'Deleting...' : 'Delete'}
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -585,13 +661,31 @@ export function TransactionsPanel({
             />
             <button
               type="submit"
-              disabled={selectedFile === null || isImporting}
+              disabled={selectedFile === null || isImporting || isDeleting}
             >
               {isImporting ? 'Importing...' : 'Import'}
             </button>
           </div>
         </form>
       </details>
+
+      <div className="history-actions">
+        <p>Replace a statement by clearing this account’s transaction history first.</p>
+        <button
+          type="button"
+          className="button-danger"
+          disabled={isLoading || isDeleting || isImporting}
+          onClick={() => void handleHistoryClear()}
+        >
+          {isClearingHistory ? 'Clearing...' : 'Clear transaction history'}
+        </button>
+      </div>
+
+      {deletionMessage && (
+        <p className={`notice notice-${deletionMessage.tone}`} role={deletionMessage.tone === 'error' ? 'alert' : 'status'}>
+          {deletionMessage.text}
+        </p>
+      )}
 
       {importMessage && (
         <p

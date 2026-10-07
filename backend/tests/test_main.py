@@ -9,7 +9,7 @@ from alembic import command
 from alembic.config import Config
 from fastapi.testclient import TestClient
 from openpyxl import Workbook, load_workbook
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 
 from database import SessionFactory, engine
@@ -2037,3 +2037,426 @@ def test_migration_cannot_discard_recorded_share_adjustments(
         )
         == "1.10000000"
     )
+
+
+def test_delete_activity_keeps_price_until_last_ticker_activity(
+    share_adjustment_account: int,
+) -> None:
+    account_id = share_adjustment_account
+    assert (
+        client.put(
+            f"/accounts/{account_id}/investment-prices/FAKE", json={"price": "100"}
+        ).status_code
+        == 200
+    )
+    activities = client.get(
+        "/investment-activities", params={"account_id": account_id}
+    ).json()
+    dividend = next(row for row in activities if row["activity_type"] == "DIVIDEND")
+    purchase = next(row for row in activities if row["activity_type"] == "BUY - MARKET")
+    deleted = client.delete(
+        f"/accounts/{account_id}/investment-activities/{dividend['id']}"
+    )
+    assert deleted.status_code == 204 and deleted.content == b""
+    position = client.get(
+        "/investment-summary", params={"account_id": account_id}
+    ).json()["positions"][0]
+    assert Decimal(position["quantity"]) == Decimal("0.5")
+    assert Decimal(position["dividends"]) == 0
+    assert Decimal(position["current_price"]) == 100
+    deleted = client.delete(
+        f"/accounts/{account_id}/investment-activities/{purchase['id']}"
+    )
+    assert deleted.status_code == 204
+    assert client.get(
+        "/investment-summary", params={"account_id": account_id}
+    ).json() == {"positions": [], "currencies": []}
+    with SessionFactory() as session:
+        assert (
+            session.scalar(
+                select(InvestmentPrice).where(InvestmentPrice.account_id == account_id)
+            )
+            is None
+        )
+        assert session.get(Account, account_id) is not None
+
+
+@pytest.mark.parametrize("dependent_type", ["sale", "share adjustment"])
+def test_delete_purchase_rejects_dependent_activity(
+    share_adjustment_account: int, dependent_type: str
+) -> None:
+    account_id = share_adjustment_account
+    activities = client.get(
+        "/investment-activities", params={"account_id": account_id}
+    ).json()
+    purchase = next(row for row in activities if row["activity_type"] == "BUY - MARKET")
+    if dependent_type == "sale":
+        contents = b"Date,Ticker,Type,Quantity,Price per share,Total Amount,Currency,FX Rate\n2026-02-02T12:00:00Z,FAKE,SELL - MARKET,0.2,USD 100,USD 20,USD,1\n"
+        result = client.post(
+            f"/accounts/{account_id}/imports/revolut-investments",
+            files={"file": ("synthetic.csv", contents, "text/csv")},
+        )
+        assert result.status_code == 201
+        expected_quantity = Decimal("0.3")
+    else:
+        result = client.put(
+            f"/accounts/{account_id}/investment-share-adjustments/FAKE/2026-01-20",
+            json={"multiplier": "1.1"},
+        )
+        assert result.status_code == 201
+        expected_quantity = Decimal("0.55")
+    deleted = client.delete(
+        f"/accounts/{account_id}/investment-activities/{purchase['id']}"
+    )
+    assert deleted.status_code == 409
+    assert deleted.json() == {
+        "detail": "Deletion would leave an invalid investment history"
+    }
+    assert (
+        len(
+            client.get(
+                "/investment-activities", params={"account_id": account_id}
+            ).json()
+        )
+        == 3
+    )
+    position = client.get(
+        "/investment-summary", params={"account_id": account_id}
+    ).json()["positions"][0]
+    assert Decimal(position["quantity"]) == expected_quantity
+
+
+def test_delete_activity_rejects_unknown_and_other_account_activity(
+    share_adjustment_account: int,
+) -> None:
+    activities = client.get(
+        "/investment-activities", params={"account_id": share_adjustment_account}
+    ).json()
+    other = client.post(
+        "/accounts",
+        json={"name": "Other account", "bank_name": "Test broker", "currency": "USD"},
+    ).json()["id"]
+    for account_id, activity_id in [
+        (0, activities[0]["id"]),
+        (share_adjustment_account, 0),
+        (other, activities[0]["id"]),
+    ]:
+        response = client.delete(
+            f"/accounts/{account_id}/investment-activities/{activity_id}"
+        )
+        assert response.status_code == 404
+    assert (
+        client.get(
+            "/investment-activities", params={"account_id": share_adjustment_account}
+        ).json()
+        == activities
+    )
+
+
+def test_clear_investments_preserves_bank_data_and_other_accounts_and_allows_reimport(
+    share_adjustment_account: int,
+) -> None:
+    account_id = share_adjustment_account
+    other = client.post(
+        "/accounts",
+        json={"name": "Other account", "bank_name": "Test broker", "currency": "USD"},
+    ).json()["id"]
+    uploaded = client.post(
+        f"/accounts/{other}/imports/revolut-investments",
+        files={
+            "file": ("synthetic.csv", _create_fake_revolut_investment_csv(), "text/csv")
+        },
+    )
+    assert uploaded.status_code == 201
+    assert (
+        client.put(
+            f"/accounts/{account_id}/investment-prices/FAKE", json={"price": "100"}
+        ).status_code
+        == 200
+    )
+    assert (
+        client.put(
+            f"/accounts/{other}/investment-prices/FAKE", json={"price": "200"}
+        ).status_code
+        == 200
+    )
+    assert (
+        client.put(
+            f"/accounts/{account_id}/investment-share-adjustments/FAKE/2026-01-20",
+            json={"multiplier": "1.1"},
+        ).status_code
+        == 201
+    )
+    with SessionFactory.begin() as session:
+        session.get(Account, account_id).current_balance = Decimal(123)
+        session.add(
+            Transaction(
+                account_id=account_id,
+                import_fingerprint="b" * 64,
+                operation_date=date(2026, 1, 1),
+                value_date=date(2026, 1, 1),
+                amount=Decimal(123),
+                balance_after=Decimal(123),
+                bank_concept="TEST",
+                description="SYNTHETIC BANK TRANSACTION",
+            )
+        )
+    other_summary = client.get(
+        "/investment-summary", params={"account_id": other}
+    ).json()
+    for _ in range(2):
+        cleared = client.delete(f"/accounts/{account_id}/investments")
+        assert cleared.status_code == 204 and cleared.content == b""
+    assert (
+        client.get("/investment-activities", params={"account_id": account_id}).json()
+        == []
+    )
+    assert client.get(
+        "/investment-summary", params={"account_id": account_id}
+    ).json() == {"positions": [], "currencies": []}
+    assert (
+        client.get("/investment-summary", params={"account_id": other}).json()
+        == other_summary
+    )
+    assert (
+        len(client.get("/transactions", params={"account_id": account_id}).json()) == 1
+    )
+    with SessionFactory() as session:
+        assert session.get(Account, account_id).current_balance == Decimal(123)
+        assert (
+            session.scalar(
+                select(InvestmentPrice).where(InvestmentPrice.account_id == account_id)
+            )
+            is None
+        )
+    imported = client.post(
+        f"/accounts/{account_id}/imports/revolut-investments",
+        files={
+            "file": ("synthetic.csv", _create_fake_revolut_investment_csv(), "text/csv")
+        },
+    )
+    assert imported.json() == {"imported": 2}
+    position = client.get(
+        "/investment-summary", params={"account_id": account_id}
+    ).json()["positions"][0]
+    assert Decimal(position["quantity"]) == Decimal("0.5")
+
+
+def test_clear_investments_rejects_unknown_account(
+    share_adjustment_account: int,
+) -> None:
+    response = client.delete("/accounts/0/investments")
+    assert response.status_code == 404
+    assert (
+        len(
+            client.get(
+                "/investment-activities",
+                params={"account_id": share_adjustment_account},
+            ).json()
+        )
+        == 2
+    )
+
+
+@pytest.mark.parametrize(
+    "description", ["MERCADONA CÑ DIEGO", "  MERCADONA CÑ DIEGO\t"]
+)
+def test_ibercaja_reimport_matches_legacy_whitespace_fingerprint(
+    clean_database: None, description: str
+) -> None:
+    response = client.post(
+        "/accounts",
+        json={"name": "Synthetic account", "bank_name": "Test bank", "currency": "EUR"},
+    )
+    account_id = response.json()["id"]
+    with SessionFactory.begin() as session:
+        session.add(
+            Transaction(
+                account_id=account_id,
+                import_fingerprint="legacy".ljust(64, "0"),
+                operation_date=date(2026, 8, 17),
+                value_date=date(2026, 8, 17),
+                bank_concept="  CARD\t",
+                description="MERCADONA CÑ DIEGO   ",
+                amount=Decimal("-42.64"),
+                balance_after=Decimal("14897.84"),
+                category="leisure",
+            )
+        )
+    workbook = load_workbook(BytesIO(_create_fake_ibercaja_xlsx()))
+    workbook.active["E7"] = description
+    with BytesIO() as stream:
+        workbook.save(stream)
+        contents = stream.getvalue()
+    workbook.close()
+    imported = client.post(
+        f"/accounts/{account_id}/imports/ibercaja",
+        files={
+            "file": (
+                "synthetic.xlsx",
+                contents,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        },
+    )
+    assert imported.status_code == 201
+    assert imported.json() == {"imported": 0, "skipped": 1}
+    rows = client.get("/transactions", params={"account_id": account_id}).json()
+    assert len(rows) == 1
+    assert rows[0]["category"] == "leisure"
+
+
+@pytest.fixture
+def bank_deletion_account(clean_database: None) -> int:
+    response = client.post(
+        "/accounts",
+        json={"name": "Synthetic bank", "bank_name": "Test bank", "currency": "EUR"},
+    )
+    account_id = response.json()["id"]
+    imported = client.post(
+        f"/accounts/{account_id}/imports/ibercaja",
+        files={
+            "file": (
+                "synthetic.xlsx",
+                _create_fake_ibercaja_xlsx(),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        },
+    )
+    assert imported.status_code == 201
+    return account_id
+
+
+def test_delete_bank_transaction_preserves_snapshot_until_history_is_empty(
+    bank_deletion_account: int,
+) -> None:
+    account_id = bank_deletion_account
+    latest = client.get("/transactions", params={"account_id": account_id}).json()[0][
+        "id"
+    ]
+    with SessionFactory.begin() as session:
+        earlier = Transaction(
+            account_id=account_id,
+            import_fingerprint="c" * 64,
+            operation_date=date(2026, 1, 1),
+            value_date=date(2026, 1, 1),
+            amount=Decimal(10),
+            balance_after=Decimal(100),
+            bank_concept="TEST",
+            description="EARLIER SYNTHETIC TRANSACTION",
+        )
+        session.add(earlier)
+        session.flush()
+        earlier_id = earlier.id
+    response = client.delete(f"/accounts/{account_id}/transactions/{latest}")
+    assert response.status_code == 204 and response.content == b""
+    with SessionFactory() as session:
+        assert session.get(Account, account_id).current_balance == Decimal("14897.84")
+    response = client.delete(f"/accounts/{account_id}/transactions/{earlier_id}")
+    assert response.status_code == 204
+    with SessionFactory() as session:
+        account = session.get(Account, account_id)
+        assert account.current_balance is None and account.balance_date is None
+
+
+def test_bank_deletion_rejects_unknown_and_other_account_records(
+    bank_deletion_account: int,
+) -> None:
+    original = client.get(
+        "/transactions", params={"account_id": bank_deletion_account}
+    ).json()
+    other = client.post(
+        "/accounts",
+        json={"name": "Other bank", "bank_name": "Test bank", "currency": "EUR"},
+    ).json()["id"]
+    for account_id, transaction_id in [
+        (0, original[0]["id"]),
+        (bank_deletion_account, 0),
+        (other, original[0]["id"]),
+    ]:
+        assert (
+            client.delete(
+                f"/accounts/{account_id}/transactions/{transaction_id}"
+            ).status_code
+            == 404
+        )
+    assert client.delete("/accounts/0/transactions").status_code == 404
+    assert (
+        client.get("/transactions", params={"account_id": bank_deletion_account}).json()
+        == original
+    )
+
+
+def test_clear_bank_history_preserves_investments_and_other_accounts_and_allows_reimport(
+    bank_deletion_account: int,
+) -> None:
+    account_id = bank_deletion_account
+    imported = client.post(
+        f"/accounts/{account_id}/imports/revolut-investments",
+        files={
+            "file": ("synthetic.csv", _create_fake_revolut_investment_csv(), "text/csv")
+        },
+    )
+    assert imported.status_code == 201
+    assert (
+        client.put(
+            f"/accounts/{account_id}/investment-prices/FAKE", json={"price": "100"}
+        ).status_code
+        == 200
+    )
+    assert (
+        client.put(
+            f"/accounts/{account_id}/investment-share-adjustments/FAKE/2026-01-20",
+            json={"multiplier": "1.1"},
+        ).status_code
+        == 201
+    )
+    investments = client.get(
+        "/investment-summary", params={"account_id": account_id}
+    ).json()
+    other = client.post(
+        "/accounts",
+        json={"name": "Other bank", "bank_name": "Test bank", "currency": "EUR"},
+    ).json()["id"]
+    assert (
+        client.post(
+            f"/accounts/{other}/imports/ibercaja",
+            files={
+                "file": (
+                    "synthetic.xlsx",
+                    _create_fake_ibercaja_xlsx(),
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                )
+            },
+        ).status_code
+        == 201
+    )
+    other_records = client.get("/transactions", params={"account_id": other}).json()
+    for _ in range(2):
+        response = client.delete(f"/accounts/{account_id}/transactions")
+        assert response.status_code == 204 and response.content == b""
+    assert client.get("/transactions", params={"account_id": account_id}).json() == []
+    assert (
+        client.get("/transactions", params={"account_id": other}).json()
+        == other_records
+    )
+    assert (
+        client.get("/investment-summary", params={"account_id": account_id}).json()
+        == investments
+    )
+    with SessionFactory() as session:
+        account = session.get(Account, account_id)
+        assert account.current_balance is None and account.balance_date is None
+    imported = client.post(
+        f"/accounts/{account_id}/imports/ibercaja",
+        files={
+            "file": (
+                "synthetic.xlsx",
+                _create_fake_ibercaja_xlsx(),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        },
+    )
+    assert imported.json() == {"imported": 1, "skipped": 0}
+    with SessionFactory() as session:
+        assert session.get(Account, account_id).current_balance == Decimal("14897.84")

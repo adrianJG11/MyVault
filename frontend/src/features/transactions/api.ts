@@ -41,6 +41,22 @@ export async function fetchTransactions(
   return (await response.json()) as Transaction[]
 }
 
+export async function deleteTransaction(accountId: number, transactionId: number): Promise<void> {
+  const response = await fetch(`/api/accounts/${accountId}/transactions/${transactionId}`, {
+    method: 'DELETE',
+  }).catch(() => {
+    throw new Error('Could not confirm deletion. Reload the page before trying again.')
+  })
+  if (!response.ok) throw new Error('Could not delete the transaction. Reload the page and try again.')
+}
+
+export async function clearTransactionHistory(accountId: number): Promise<void> {
+  const response = await fetch(`/api/accounts/${accountId}/transactions`, { method: 'DELETE' }).catch(() => {
+    throw new Error('Could not confirm the reset. Reload the page before trying again.')
+  })
+  if (!response.ok) throw new Error('Could not clear transaction history. Reload the page and try again.')
+}
+
 export async function updateTransactionCategory(
   transactionId: number,
   category: string,

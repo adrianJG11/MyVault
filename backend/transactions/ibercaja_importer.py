@@ -14,7 +14,7 @@ def _parse_ibercaja_date(value: str) -> date:
     return date(int(year), int(month), int(day))
 
 
-def _create_import_fingerprint(
+def ibercaja_transaction_fingerprint(
     operation_date: date,
     value_date: date,
     amount: Decimal,
@@ -28,8 +28,8 @@ def _create_import_fingerprint(
             value_date.isoformat(),
             format(amount, ".2f"),
             format(balance_after, ".2f"),
-            bank_concept,
-            description,
+            bank_concept.strip(),
+            description.strip(),
         ],
         ensure_ascii=False,
         separators=(",", ":"),
@@ -113,7 +113,7 @@ def parse_ibercaja_xlsx(
 
             transactions.append(
                 {
-                    "import_fingerprint": _create_import_fingerprint(
+                    "import_fingerprint": ibercaja_transaction_fingerprint(
                         operation_date=operation_date,
                         value_date=value_date,
                         amount=decimal_amount,
@@ -123,8 +123,8 @@ def parse_ibercaja_xlsx(
                     ),
                     "operation_date": operation_date,
                     "value_date": value_date,
-                    "bank_concept": bank_concept,
-                    "description": description,
+                    "bank_concept": bank_concept.strip(),
+                    "description": description.strip(),
                     "amount": decimal_amount,
                     "balance_after": decimal_balance,
                 }

@@ -58,6 +58,37 @@ export async function importInvestments(
   return (await response.json()) as ImportResult
 }
 
+export async function deleteInvestmentActivity(
+  accountId: number,
+  activityId: number,
+): Promise<void> {
+  const response = await fetch(
+    `/api/accounts/${accountId}/investment-activities/${activityId}`,
+    { method: 'DELETE' },
+  ).catch(() => {
+    throw new Error('Could not confirm deletion. Reload the page before trying again.')
+  })
+  if (response.status === 409) {
+    throw new Error(
+      'This activity is needed by later trades or share adjustments. Delete dependent activities first, or clear this account’s investment history.',
+    )
+  }
+  if (!response.ok) {
+    throw new Error('Could not delete the activity. Reload the page and try again.')
+  }
+}
+
+export async function clearInvestmentHistory(accountId: number): Promise<void> {
+  const response = await fetch(`/api/accounts/${accountId}/investments`, {
+    method: 'DELETE',
+  }).catch(() => {
+    throw new Error('Could not confirm the reset. Reload the page before trying again.')
+  })
+  if (!response.ok) {
+    throw new Error('Could not clear investment history. Reload the page and try again.')
+  }
+}
+
 export async function updateInvestmentPrice(
   accountId: number,
   ticker: string,
